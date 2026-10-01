@@ -424,14 +424,23 @@ class PresenceOrchestrator:
     def inject_demo_anomaly(self, kind: str, student_id: str | None = None,
                             at: float | None = None) -> AnomalyResult:
         """Brief section 29's Demo Control Panel: one button, one immediate,
-        visible reaction. `student_id` must already be enrolled (pass a
-        LIVE student to show the demo responding to an actual phone, or any
-        already-seeded simulated one); a classroom/session already
-        registered via seed_simulation or PUT /classrooms is required too.
+        visible reaction. Pass a specific `student_id` to target a LIVE
+        student (so the demo responds to an actual phone) or any already-
+        seeded simulated one; leave it unset and a random already-enrolled
+        student is picked automatically -- that is what makes this a true
+        one-click button for judges. A classroom/session already registered
+        via seed_simulation or PUT /classrooms is required either way.
         """
         at = at if at is not None else time.time()
-        if student_id is None or student_id not in self.store.student_ids():
-            raise ValueError("student_id must already be enrolled -- call POST /students or "
+        enrolled = self.store.student_ids()
+        if student_id is None:
+            if not enrolled:
+                raise ValueError("no students enrolled -- call POST /students or "
+                                 "POST /simulation/start first")
+            rng = np.random.default_rng(int(at) ^ hash(kind) & 0xFFFF)
+            student_id = enrolled[int(rng.integers(len(enrolled)))]
+        elif student_id not in enrolled:
+            raise ValueError(f"student_id {student_id!r} is not enrolled -- call POST /students or "
                              "POST /simulation/start first")
         classrooms = self.store.classrooms()
         if not classrooms:

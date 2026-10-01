@@ -200,6 +200,26 @@ def test_inject_demo_anomaly_requires_enrolled_student(tmp_path):
         orch.inject_demo_anomaly("short_presence", student_id="NOBODY", at=clock.t)
 
 
+def test_inject_demo_anomaly_picks_a_student_when_none_given(tmp_path):
+    """Demo Control Panel buttons (brief section 29) must be genuinely
+    one-click: a judge shouldn't have to look up a student_id first."""
+    clock = Clock()
+    engine, orch, secret = _setup(tmp_path, clock)
+    anomaly = orch.inject_demo_anomaly("short_presence", at=clock.t)
+    assert anomaly.is_anomalous is True
+    stored = engine.store.anomaly(anomaly.anomaly_id)
+    assert stored.student_id == "STU102"   # the only enrolled student
+
+
+def test_inject_demo_anomaly_with_no_student_fails_clearly(tmp_path):
+    clock = Clock()
+    store = Store()
+    engine = Engine(store, ModelRegistry(tmp_path / "models"), Settings(max_clock_skew_s=0), clock)
+    orch = PresenceOrchestrator(engine, MockLLMProvider())
+    with pytest.raises(ValueError, match="no students enrolled"):
+        orch.inject_demo_anomaly("short_presence", at=clock.t)
+
+
 def test_inject_demo_anomaly_token_reuse_uses_real_token_pipeline(tmp_path):
     clock = Clock()
     engine, orch, secret = _setup(tmp_path, clock)
