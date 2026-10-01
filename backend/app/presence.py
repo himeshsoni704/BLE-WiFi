@@ -392,7 +392,7 @@ class PresenceOrchestrator:
         every simulated attendance event through the SAME evidence+anomaly
         pipeline live data uses, just without the token/scan round trip."""
         from simulator.campus import generate_campus_dataset
-        data = generate_campus_dataset(n_students, n_classrooms, n_aps, anomaly_rate, seed)
+        data = generate_campus_dataset(n_students, n_classrooms, n_aps, anomaly_rate, seed, now=self.engine.clock())
         classrooms_by_id = {c.classroom_id: c for c in data["classrooms"]}
 
         for c in data["classrooms"]:

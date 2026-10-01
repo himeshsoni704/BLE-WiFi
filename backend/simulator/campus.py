@@ -17,6 +17,7 @@ source="simulated", and nothing here is presented as a live phone reading.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -276,18 +277,35 @@ def build_demo_event(
 
 def generate_campus_dataset(
     n_students: int = 300, n_classrooms: int = 20, n_aps: int = 10,
-    anomaly_rate: float = 0.08, seed: int = 0,
+    anomaly_rate: float = 0.08, seed: int = 0, now: float | None = None,
 ) -> dict:
     """Brief section 26: 300 students / 20 classrooms / 10 APs / 20 BLE
     markers / multiple sessions, with a labelled mix of normal and
     anomalous attendance events (section 27-28). Returns everything needed
     to seed the backend DB (classrooms/APs/markers/students/sessions) and
-    everything needed to train/evaluate the ML models (events with labels)."""
+    everything needed to train/evaluate the ML models (events with labels).
+
+    `now` anchors every session's start time into the recent PAST relative
+    to it (default: real wall-clock time.time()) -- found this mattered
+    while actually calling the seeded data through GET /locations: an
+    earlier version anchored sessions to a hardcoded constant with no
+    relationship to "now", so an event's enter_ts could land in the future
+    (or just after the exact instant being queried, since every enter_ts
+    also adds its own positive random offset on top of session.start_ts),
+    making it invisible to any `ts <= at` query -- i.e. the demo's own
+    simulated students silently would not show up live. Training scripts
+    (train_wifi_model.py / train_anomaly_model.py / generate_dataset.py)
+    don't care about `now` at all and are unaffected by this -- they never
+    inspect absolute timestamp values, only relative ordering/durations."""
     rng = np.random.default_rng(seed)
     classrooms, aps, markers = build_campus(n_classrooms, n_aps)
     classrooms_by_id = {c.classroom_id: c for c in classrooms}
     students = build_students(n_students, rng)
-    t0 = 1_800_000_000.0
+    now = now if now is not None else time.time()
+    # every session (up to 4 x 90-min staggered periods, each 75 min long) must have fully STARTED
+    # by `now`, with margin, so every enter_ts (session.start_ts + a further positive random offset,
+    # capped at the session length) is comfortably <= now.
+    t0 = now - (4 * 90 * 60 + 75 * 60)
     sessions = build_sessions(classrooms, t0, rng, n_sessions=max(n_classrooms, 8))
 
     anomaly_kinds = ["proxy_attendance", "impossible_movement", "wifi_ble_mismatch",
