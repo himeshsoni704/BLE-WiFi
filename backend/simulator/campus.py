@@ -229,8 +229,9 @@ def _normal_attendance(student: SimStudent, session: SimSession, classrooms_by_i
     n_wifi = max(1, int(dwell / 60))    # a Wi-Fi scan roughly every 60s (scans are more throttled)
     ble = [ble_marker_rssi(rng) for _ in range(n_ble)]
     wifi = [classroom_fingerprint(c, aps, rng) for _ in range(n_wifi)]
+    peers = [f"STU{int(rng.integers(0, 999)):03d}" for _ in range(int(rng.integers(2, 7)))]
     return AttendanceEvent(student.student_id, session.session_id, session.classroom_id,
-                           enter, enter + dwell, ble, wifi, [])
+                           enter, enter + dwell, ble, wifi, peers)
 
 
 def _inject_anomaly(ev: AttendanceEvent, kind: str, classrooms_by_id: dict[str, Classroom],
@@ -293,3 +294,69 @@ def generate_campus_dataset(
         "classrooms": classrooms, "aps": aps, "markers": markers, "students": students,
         "sessions": sessions, "events": events,
     }
+
+
+# ---------------------------------------------------------------------------
+# Bridges to the ML training scripts (brief section 36-37)
+# ---------------------------------------------------------------------------
+def wifi_training_pairs(classrooms: list[Classroom], aps: list[AccessPoint],
+                        rng: np.random.Generator, samples_per_room: int = 40
+                        ) -> tuple[list[dict[str, float]], list[str]]:
+    """Fingerprints + zone labels for app.wifi_knn.WifiFingerprintModel.fit(),
+    independent of any particular student/session (the KNN model is trained
+    on "what does this room's Wi-Fi look like", not on attendance events)."""
+    fingerprints, zones = [], []
+    for c in classrooms:
+        for _ in range(samples_per_room):
+            fingerprints.append(classroom_fingerprint(c, aps, rng))
+            zones.append(c.classroom_id)
+    return fingerprints, zones
+
+
+def features_from_event(ev: AttendanceEvent, classrooms_by_id: dict[str, "Classroom"],
+                        wifi_model=None) -> "AnomalyFeatures":
+    """Turns one simulated AttendanceEvent into the brief's 10-feature
+    Isolation Forest vector (app.anomaly_iforest.AnomalyFeatures). Imports
+    anomaly_iforest lazily to avoid a hard dependency from the simulator
+    package on the backend app package at module-import time.
+
+    wifi_model, if given, is used to compute a REAL wifi_confidence (and,
+    for mismatch events, to see whether the model's own prediction lands on
+    the "wrong" room) rather than a label-derived shortcut -- train the Wi-Fi
+    model first (generate_dataset.py's own ordering) and pass it in here.
+    """
+    from app.anomaly_iforest import AnomalyFeatures   # local import: see docstring
+
+    duration = max(0.0, ev.leave_ts - ev.enter_ts)
+    mean_rssi = float(np.mean(ev.ble_rssi_samples)) if ev.ble_rssi_samples else -100.0
+    nearby = len(ev.nearby_peer_ids)
+
+    if wifi_model is not None and wifi_model.is_trained and ev.wifi_fingerprints:
+        last_fp = ev.wifi_fingerprints[-1]
+        pred = wifi_model.predict(last_fp)
+        wifi_confidence = pred.confidence
+        wifi_zone = pred.zone
+    else:
+        wifi_confidence = 0.9 if ev.label != "wifi_ble_mismatch" else 0.3
+        wifi_zone = ev.extra_classroom_id if ev.label == "wifi_ble_mismatch" else ev.classroom_id
+
+    token_reuse_count = {"token_replay": 3, "proxy_attendance": 2}.get(ev.label, 0)
+
+    if ev.label == "impossible_movement" and len(ev.extra_zones_visited) >= 2:
+        a, b = ev.extra_zones_visited[0], ev.extra_zones_visited[-1]
+        pa, pb = classrooms_by_id[a], classrooms_by_id[b]
+        distance = math.hypot(pa.x - pb.x, pa.y - pb.y)
+        dt = 45.0   # brief's own worked example is ~60s; a bit tighter to guarantee a clear outlier
+        speed = distance / dt
+        time_between, n_rooms, n_switches = dt, 2, 1
+    else:
+        speed, time_between, n_rooms, n_switches = 0.0, duration, 1, 0
+
+    signal_consistency = 1.0 if (wifi_zone is None or wifi_zone == ev.classroom_id) else 0.0
+
+    return AnomalyFeatures(
+        ble_duration=duration, mean_ble_rssi=mean_rssi, wifi_confidence=wifi_confidence,
+        nearby_device_count=nearby, token_reuse_count=token_reuse_count,
+        time_between_locations=time_between, estimated_speed=speed, number_of_classrooms=n_rooms,
+        session_switch_count=n_switches, signal_consistency=signal_consistency,
+    )
