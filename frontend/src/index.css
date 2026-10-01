@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0e17;
+  --bg-elevated: #10151f;
+  --bg-card: #141a26;
+  --border: #212a3a;
+  --border-soft: #1a2130;
+  --text: #e6eaf2;
+  --text-dim: #8d97ab;
+  --text-faint: #5b6478;
+  --accent: #5b8cff;
+  --accent-soft: #5b8cff22;
+  --green: #34d399;
+  --green-soft: #34d39922;
+  --amber: #fbbf24;
+  --amber-soft: #fbbf2422;
+  --red: #f87171;
+  --red-soft: #f8717122;
+  --purple: #a78bfa;
+  --purple-soft: #a78bfa22;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+.pulse {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  animation: fade-in 0.25s ease-out;
+}
