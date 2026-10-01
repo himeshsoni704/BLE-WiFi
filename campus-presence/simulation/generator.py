@@ -275,11 +275,16 @@ class CampusSim:
 
     # ---- scenarios ------------------------------------------------------------------------
 
+    NEEDS = {"proxy": 4, "token_replay": 1}      # attending students a scenario needs in its target session
+
     def _pick_session(self, name_hint: int | None = None, min_students: int = 8) -> SessionRow:
-        pool = [s for s in self.sessions.values() if len([k for k in self.enrolled[s.id]
-                                                           if self.labels.get((s.id, k)) == "normal"]) >= min_students]
+        """A session with at least `min_students` normally-attending students (prefers the latest slot)."""
+        def attending(s: SessionRow) -> int:
+            return len([k for k in self.enrolled[s.id] if self.labels.get((s.id, k)) == "normal"])
+        pool = [s for s in self.sessions.values() if attending(s) >= min_students]
         if not pool:
-            raise RuntimeError("no simulated sessions with enough attending students; start the simulation first")
+            raise RuntimeError(f"no simulated session has {min_students}+ attending students "
+                               "(use a larger campus, or start the simulation first)")
         latest = max(s.start_ts for s in pool)
         pool = [s for s in pool if s.start_ts == latest] or pool       # prefer the most recent slot
         return pool[int(self.rng.integers(len(pool)))]
@@ -298,7 +303,7 @@ class CampusSim:
     def scenario(self, db: Session, name: str, session: SessionRow | None = None, evaluate: bool = True) -> dict:
         if name not in ALL_SCENARIOS:
             raise ValueError(f"unknown scenario {name!r}")
-        s = session or self._pick_session()
+        s = session or self._pick_session(min_students=max(self.NEEDS.get(name, 1), min(8, self.NEEDS.get(name, 1) + 4)))
         grid = self._grid(s)
         b = Batch()
         targets: list[str] = []
@@ -377,6 +382,8 @@ class CampusSim:
                                   campus.sample_position(s.classroom_id, self.rng), present)
             others = [x for x in self.sessions.values() if x.start_ts == s.start_ts and x.classroom_id != s.classroom_id
                       and len([k for k in self.enrolled[x.id] if self.labels.get((x.id, k)) == "normal"]) >= 3]
+            if not others:
+                raise RuntimeError("token_replay needs another room with 3+ attending students at the same time")
             far = max(others, key=lambda x: campus.zone_distance(x.classroom_id, s.classroom_id))
             observers = self._normal_students(far, 3)
             for g in grid[2:6]:
@@ -428,12 +435,17 @@ class CampusSim:
             db.commit()
         self.generate_normal(db, progress=lambda f, m: progress(0.05 + 0.6 * f, m))
         progress(0.68, "injecting anomaly scenarios")
-        injected = []
+        injected, skipped = [], []
         for name, count in (("proxy", 1), ("impossible_movement", 2), ("wifi_ble_mismatch", 2),
                             ("token_replay", 2), ("short_presence", 3), ("false_positive", 2)):
             for _ in range(count):
                 with self.svc.write_lock:
-                    injected.append(self.scenario(db, name, evaluate=False))
+                    try:
+                        injected.append(self.scenario(db, name, evaluate=False))
+                    except RuntimeError as exc:         # tiny campuses cannot host every scenario
+                        db.rollback()
+                        skipped.append({"scenario": name, "reason": str(exc)})
+                        continue
                     db.commit()
         progress(0.80, "evaluating every session (fusion, rules, Isolation Forest)")
         for i, s in enumerate(sorted(self.sessions.values(), key=lambda x: (x.start_ts, x.classroom_id))):
@@ -449,4 +461,5 @@ class CampusSim:
                     a.scenario = inj["scenario"]
             db.commit()
         return {"students": len(self.secret), "sessions": len(self.sessions),
-                "injected": [{k: v for k, v in i.items() if k != "anomaly_ids"} for i in injected]}
+                "injected": [{k: v for k, v in i.items() if k != "anomaly_ids"} for i in injected],
+                "skipped_scenarios": skipped}

@@ -43,6 +43,7 @@ class EvalResult:
     final_state: str = ABSENT
     is_simulated: bool = False
     eligible_for_if: bool = False
+    if_skip_reason: str | None = None
 
 
 TWIN_BUCKET_S = 60
@@ -209,15 +210,25 @@ def evaluate_session(db: Session, svc: Services, session: SessionRow, now: float
                           twin_distance_db=twins.get(k, 99.0))
         hits = evaluate_rules(ev, ctx, st.thresholds)
         feats = extract_features(ev, ctx, st.thresholds)
-        eligible = ev["has_evidence"] and ev["elapsed_s"] >= MIN_ELAPSED_FOR_IF_S and (
-            ev["classroom_ble"]["detected"] or ev["wifi"]["available"] or ev["peers"]["observed_distinct"] > 0)
+        skip = None
+        if not ev["has_evidence"] or not (ev["classroom_ble"]["detected"] or ev["wifi"]["available"]
+                                          or ev["peers"]["observed_distinct"] > 0):
+            skip = "no BLE/Wi-Fi/peer evidence to score"
+        elif ev["elapsed_s"] < MIN_ELAPSED_FOR_IF_S:
+            skip = "session started less than 2 minutes ago"
+        elif ev["peers"]["observed_distinct"] < st.if_min_peers:
+            skip = (f"fewer than {st.if_min_peers} distinct nearby devices: the model was trained on classroom-scale "
+                    "density, so its score would be meaningless here")
         results.append(EvalResult(k, session.id, ev, hits, feats, None, None, ev["state"],
-                                  inp.is_simulated, eligible))
+                                  inp.is_simulated, skip is None, skip))
 
     if use_model and svc.anomaly is not None:
         idx = [i for i, r in enumerate(results) if r.eligible_for_if]
         for i, sc in zip(idx, svc.anomaly.score([results[i].features for i in idx])):
             results[i].if_score = sc
+    elif use_model:
+        for r in results:
+            r.if_skip_reason = r.if_skip_reason or "Isolation Forest model file not found (run ml/train_anomaly_model.py)"
 
     if persist:
         _persist(db, svc, session, results, now, scenario, publish)
@@ -234,7 +245,8 @@ def _persist(db: Session, svc: Services, session: SessionRow, results: list[Eval
         flagged = bool(hits) or bool(r.if_score and r.if_score.flagged)
         an = existing_an.get(r.student_key)
         snapshot = {**r.evidence, "rules": [h.to_dict() for h in r.rules],
-                    "isolation_forest": None if r.if_score is None else {
+                    "isolation_forest": {"evaluated": False, "reason": r.if_skip_reason or "not evaluated"} if r.if_score is None else {
+                        "evaluated": True,
                         "raw_score": round(r.if_score.raw, 4), "decision_function": round(r.if_score.decision, 4),
                         "flagged": r.if_score.flagged, "risk_demo_0_100": r.if_score.risk_demo,
                         "note": "Raw sklearn score_samples (lower = more unusual). risk_demo_0_100 is a display "

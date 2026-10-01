@@ -65,6 +65,7 @@ class Settings:
     token_skew_windows: int = 1
     ts_tolerance_s: float = 120
     retention_days: int = 30
+    if_min_peers: int = 3                # Isolation Forest is skipped below this many distinct nearby devices
     demo_mode: bool = True               # seeds demo accounts + live demo session
     demo_password: str = "demo1234"
     llm_provider: str = "mock"

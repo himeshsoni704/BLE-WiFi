@@ -75,6 +75,7 @@ def ingest_ble(db: Session, svc: Services, who: Principal, items: list, now: flo
     by_marker_id = {c.marker_id: c for c in classrooms.values()}
     results: list[ItemResult] = []
     seen_nonces: set[str] = set()
+    affected: dict[str, None] = {who.student_key: None}      # observer first, then everyone they reported seeing
     for i, it in enumerate(items):
         if not timestamp_ok(it.timestamp, now, st.ts_tolerance_s):
             _reject(svc, results, i, "timestamp_out_of_window")
@@ -101,6 +102,7 @@ def ingest_ble(db: Session, svc: Services, who: Principal, items: list, now: flo
                                student_key=who.student_key, ts=it.timestamp, duration=it.duration,
                                rssi=it.rssi, samples=it.samples, observed_token=it.observed_token,
                                observed_student_key=peer, nonce=it.nonce, is_simulated=simulated))
+            affected[peer] = None                  # their token was seen: recompute their evidence/token-reuse too
         else:
             room = classrooms.get(it.marker_idx) if it.marker_idx else by_marker_id.get(it.marker_id)
             if room is None or not it.marker_token:
@@ -121,10 +123,14 @@ def ingest_ble(db: Session, svc: Services, who: Principal, items: list, now: flo
     db.flush()
     accepted = sum(1 for r in results if r.status == "accepted")
     svc.metrics["ble_accepted"] += accepted
-    evaluated = evaluate_live_student(db, svc, who.student_key, now) if accepted else []
+    state = None
+    if accepted:
+        for n, key in enumerate(affected):
+            ev = evaluate_live_student(db, svc, key, now)
+            if n == 0 and ev:
+                state = ev[0].final_state
     return {"accepted": accepted, "rejected": len(results) - accepted,
-            "results": [r.to_dict() for r in results],
-            "state": evaluated[0].final_state if evaluated else None}
+            "results": [r.to_dict() for r in results], "state": state}
 
 
 def fingerprint_from(db: Session, aps: list, register_unknown: bool = False) -> tuple[dict[str, float], int, int]:

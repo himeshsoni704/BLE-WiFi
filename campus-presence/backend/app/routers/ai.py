@@ -60,6 +60,8 @@ def evidence_panel(p: dict) -> dict:
         "token_reuse_devices": v.get("token_reuse_count", 0),
         "movement_speed_mps": v.get("movement_speed_mps"),
         "isolation_forest": iso, "isolation_score_raw": None if p["if_raw"] is None else round(p["if_raw"], 3),
+        "isolation_forest_note": (p["snapshot"].get("isolation_forest") or {}).get("reason")
+                                 if p["if_raw"] is None else None,
         "demo_risk_score_0_100": p["risk"],
         "risk_note": "demo risk score = display rescale of the raw score; not a probability",
         "rules": [{"rule": r["rule"], "severity": r["severity"], "detail": r["detail"]} for r in p["rules"]],
