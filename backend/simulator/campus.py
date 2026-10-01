@@ -256,6 +256,24 @@ def _inject_anomaly(ev: AttendanceEvent, kind: str, classrooms_by_id: dict[str, 
     raise ValueError(f"unknown injection kind: {kind}")
 
 
+def build_demo_event(
+    student: SimStudent, session: SimSession, kind: str, classrooms_by_id: dict[str, Classroom],
+    aps: list[AccessPoint], rng: np.random.Generator, other_classroom_id: str | None = None,
+) -> AttendanceEvent:
+    """Public entry point for the live "Demo Control Panel" (brief section
+    29): one normal event, then mutated into `kind`. Only covers the
+    scenarios that are genuinely synthesizable from a single event's own
+    fields (wifi_ble_mismatch, short_presence, impossible_movement,
+    device_clustering) -- proxy_attendance/token_replay need real
+    conflicting token sightings from two observer positions, which
+    app.presence.PresenceOrchestrator.inject_demo_anomaly() constructs for
+    real against an actually-enrolled student instead of faking here."""
+    ev = _normal_attendance(student, session, classrooms_by_id, aps, rng)
+    if kind == "normal":
+        return ev
+    return _inject_anomaly(ev, kind, classrooms_by_id, aps, rng, other_classroom_id)
+
+
 def generate_campus_dataset(
     n_students: int = 300, n_classrooms: int = 20, n_aps: int = 10,
     anomaly_rate: float = 0.08, seed: int = 0,

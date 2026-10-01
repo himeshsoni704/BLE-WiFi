@@ -148,3 +148,78 @@ def test_ingest_peer_observation_unknown_observer_token_is_dropped(tmp_path):
     observed = orch.ingest_peer_observation("0" * 16, tok_a, rssi=-58, duration_s=None, ts=clock.t)
     assert observed is None
     assert engine.store.peer_observations_between(clock.t - 1, clock.t + 1) == []
+
+
+def test_seed_simulation_populates_db_and_matches_requested_counts(tmp_path):
+    clock = Clock()
+    store = Store()
+    engine = Engine(store, ModelRegistry(tmp_path / "models"), Settings(max_clock_skew_s=0), clock)
+    orch = PresenceOrchestrator(engine, MockLLMProvider())
+
+    summary = orch.seed_simulation(n_students=40, n_classrooms=8, n_aps=4, anomaly_rate=0.15, seed=3)
+
+    assert summary["students"] == 40
+    assert summary["classrooms"] == 8
+    assert len(store.classrooms()) == 8
+    assert len(store.student_ids()) == 40
+    assert len(store.sessions()) >= 1
+    assert summary["anomalies_injected"] > 0
+    anomalies = store.anomalies()
+    assert len(anomalies) == summary["anomalies_injected"]
+    # every anomaly's source attendance evidence was stored as "simulated", not "live"
+    sample_sid = anomalies[0].student_id
+    ev_row = store.latest_evidence(sample_sid)
+    assert ev_row is not None and ev_row.source == "simulated"
+
+
+def test_seed_simulation_is_idempotent_for_already_enrolled_students(tmp_path):
+    clock = Clock()
+    store = Store()
+    engine = Engine(store, ModelRegistry(tmp_path / "models"), Settings(max_clock_skew_s=0), clock)
+    orch = PresenceOrchestrator(engine, MockLLMProvider())
+    orch.seed_simulation(n_students=20, n_classrooms=4, n_aps=2, seed=1)
+    n_before = len(store.student_ids())
+    orch.seed_simulation(n_students=20, n_classrooms=4, n_aps=2, seed=1)   # same seed, same student ids
+    assert len(store.student_ids()) == n_before   # no DuplicateStudent crash, no duplicate rows
+
+
+def test_inject_demo_anomaly_short_presence(tmp_path):
+    clock = Clock()
+    engine, orch, secret = _setup(tmp_path, clock)
+    anomaly = orch.inject_demo_anomaly("short_presence", student_id="STU102", at=clock.t)
+    assert anomaly.is_anomalous is True
+    assert anomaly.anomaly_id is not None
+    stored = engine.store.anomaly(anomaly.anomaly_id)
+    assert stored.type == "short_presence"
+
+
+def test_inject_demo_anomaly_requires_enrolled_student(tmp_path):
+    clock = Clock()
+    engine, orch, secret = _setup(tmp_path, clock)
+    with pytest.raises(ValueError, match="enrolled"):
+        orch.inject_demo_anomaly("short_presence", student_id="NOBODY", at=clock.t)
+
+
+def test_inject_demo_anomaly_token_reuse_uses_real_token_pipeline(tmp_path):
+    clock = Clock()
+    engine, orch, secret = _setup(tmp_path, clock)
+    anomaly = orch.inject_demo_anomaly("proxy_attendance", student_id="STU102", at=clock.t)
+    assert anomaly.is_anomalous is True
+    assert any("token" in r.lower() for r in anomaly.reasons)
+
+    # the underlying mechanism really did post two real scans through engine.ingest_scans
+    rows = engine.store.scans_between(clock.t - 10, clock.t + 10)
+    assert len(rows) == 2
+    assert {r.zone for r in rows} == {ROOM_204, ROOM_205}
+    assert all(r.student_id == "STU102" for r in rows)
+
+
+def test_inject_demo_anomaly_token_reuse_needs_two_classrooms(tmp_path):
+    clock = Clock()
+    store = Store()
+    engine = Engine(store, ModelRegistry(tmp_path / "models"), Settings(max_clock_skew_s=0), clock)
+    orch = PresenceOrchestrator(engine, MockLLMProvider())
+    store.upsert_classroom(ClassroomRow(ROOM_204, "Room 204", "Block A", 1, 0.0, 0.0, "ROOM_204_BEACON", None))
+    engine.enroll_student("STU102", "Himesh")
+    with pytest.raises(ValueError, match="2 registered classrooms"):
+        orch.inject_demo_anomaly("token_replay", student_id="STU102", at=clock.t)

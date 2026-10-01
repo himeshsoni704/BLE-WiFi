@@ -12,6 +12,8 @@ import math
 import time
 from dataclasses import dataclass
 
+import numpy as np
+
 from .anomaly_iforest import AnomalyDetector, AnomalyFeatures
 from .anomaly_rules import ObserverSighting, RuleConfig, ZoneSighting, run_all_rules
 from .engine import Engine
@@ -21,7 +23,7 @@ from .evidence import (
 )
 from .llm import LLMProvider
 from .rag import CaseRetriever, RetrievedCase, VerifiedCase, anomaly_query_text
-from .store import PeerObservationRow, WifiFingerprintSample
+from .store import ClassroomRow, PeerObservationRow, SessionRow, WifiFingerprintSample
 from .wifi_knn import WifiFingerprintModel
 
 ZONE_HISTORY_LOOKBACK_S = 3 * 3600.0
@@ -330,3 +332,164 @@ class PresenceOrchestrator:
             WifiFingerprintSample(time.time(), zone, bssid, rssi, source)
             for bssid, rssi in fingerprint.items()
         ])
+
+    # ---- synthetic campus simulation (brief sections 26-29) ------------------
+
+    _SIM_REASONS = {
+        "short_presence": lambda ev, d: [f"BLE marker detected for only {d:.0f}s"],
+        "device_clustering": lambda ev, d: [
+            f"{len(ev.nearby_peer_ids)} distinct student identities associated with what looks like one device"],
+    }
+
+    def _record_simulated_event(self, ev, classrooms_by_id: dict) -> tuple[EvidenceResult, AnomalyResult | None]:
+        """Builds evidence straight from a simulator AttendanceEvent's own
+        fields (never through the live token/scan pipeline -- simulated
+        students have no real phone, so there is nothing to ingest) and
+        stores it with source="simulated", matching the brief's mandatory
+        LIVE/SIMULATED distinction (section 39)."""
+        duration = max(0.0, ev.leave_ts - ev.enter_ts)
+        rssi = int(np.median(ev.ble_rssi_samples)) if ev.ble_rssi_samples else None
+        ble = BleMarkerEvidence(detected=bool(ev.ble_rssi_samples), rssi=rssi, duration_s=duration)
+        wifi = self._wifi_evidence(ev.wifi_fingerprints[-1] if ev.wifi_fingerprints else None)
+        consistent = 0 if ev.label == "device_clustering" else len(ev.nearby_peer_ids)
+        peer = PeerBleEvidence(nearby_devices=len(ev.nearby_peer_ids), consistent_observations=consistent)
+
+        attendance_ev = AttendanceEvidence(ev.student_id, ev.session_id, ev.classroom_id, ble, peer, wifi,
+                                           FaceEvidence(), RfidEvidence(), ev.enter_ts)
+        result = score_attendance(attendance_ev, self.evidence_weights)
+        self.store.add_evidence(ev.student_id, ev.session_id, ev.classroom_id, ev.enter_ts, result.score,
+                                result.state.value, result.to_dict(), "simulated")
+
+        if ev.label == "normal":
+            return result, None
+
+        from simulator.campus import features_from_event
+        features = features_from_event(ev, classrooms_by_id, self.wifi_model)
+        if ev.label == "wifi_ble_mismatch":
+            reasons = [f"BLE classroom marker indicates {ev.classroom_id}, but the Wi-Fi fingerprint "
+                      f"indicates {ev.extra_classroom_id}"]
+        elif ev.label == "impossible_movement" and len(ev.extra_zones_visited) >= 2:
+            reasons = [f"moved between {ev.extra_zones_visited[0]} and {ev.extra_zones_visited[-1]} "
+                      f"faster than physically plausible"]
+        elif ev.label in ("token_replay", "proxy_attendance"):
+            reasons = ["the same temporary token pattern was observed from multiple devices"]
+        else:
+            reasons = self._SIM_REASONS.get(ev.label, lambda ev, d: [f"flagged as {ev.label}"])(ev, duration)
+        severity = "high" if ev.label in ("impossible_movement", "token_replay", "proxy_attendance") else "medium"
+
+        iso_score, demo_risk = None, None
+        if self.anomaly_detector is not None and self.anomaly_detector.is_trained:
+            pred = self.anomaly_detector.predict(features)
+            iso_score, demo_risk = pred.raw_score, pred.demo_risk_score
+
+        anomaly_id = self.store.add_anomaly(ev.student_id, ev.enter_ts, ev.label, severity, iso_score,
+                                            True, reasons, features.to_dict())
+        return result, AnomalyResult(anomaly_id, True, severity, reasons, iso_score, demo_risk)
+
+    def seed_simulation(self, n_students: int = 300, n_classrooms: int = 20, n_aps: int = 10,
+                        anomaly_rate: float = 0.08, seed: int = 0) -> dict:
+        """Brief section 26: seeds classrooms/sessions/students and runs
+        every simulated attendance event through the SAME evidence+anomaly
+        pipeline live data uses, just without the token/scan round trip."""
+        from simulator.campus import generate_campus_dataset
+        data = generate_campus_dataset(n_students, n_classrooms, n_aps, anomaly_rate, seed)
+        classrooms_by_id = {c.classroom_id: c for c in data["classrooms"]}
+
+        for c in data["classrooms"]:
+            self.store.upsert_classroom(ClassroomRow(
+                c.classroom_id, c.name, c.building, c.floor, c.x, c.y,
+                f"{c.classroom_id}_BEACON", f"Smart Board -- {c.name}"))
+            self.store.upsert_scanner(f"{c.classroom_id}_BEACON", c.classroom_id, None)
+        for s in data["sessions"]:
+            self.store.upsert_session(SessionRow(s.session_id, s.course, s.classroom_id, s.start_ts, s.end_ts))
+
+        existing = set(self.store.student_ids())
+        for st in data["students"]:
+            if st.student_id not in existing:
+                self.engine.enroll_student(st.student_id, st.name)   # secret discarded: no real phone to provision
+
+        n_anomalies = 0
+        for ev in data["events"]:
+            _, anomaly = self._record_simulated_event(ev, classrooms_by_id)
+            if anomaly is not None:
+                n_anomalies += 1
+
+        return {
+            "students": len(data["students"]), "classrooms": len(data["classrooms"]),
+            "wifi_aps": len(data["aps"]), "ble_markers": len(data["markers"]),
+            "sessions": len(data["sessions"]), "events": len(data["events"]),
+            "anomalies_injected": n_anomalies,
+        }
+
+    def inject_demo_anomaly(self, kind: str, student_id: str | None = None,
+                            at: float | None = None) -> AnomalyResult:
+        """Brief section 29's Demo Control Panel: one button, one immediate,
+        visible reaction. `student_id` must already be enrolled (pass a
+        LIVE student to show the demo responding to an actual phone, or any
+        already-seeded simulated one); a classroom/session already
+        registered via seed_simulation or PUT /classrooms is required too.
+        """
+        at = at if at is not None else time.time()
+        if student_id is None or student_id not in self.store.student_ids():
+            raise ValueError("student_id must already be enrolled -- call POST /students or "
+                             "POST /simulation/start first")
+        classrooms = self.store.classrooms()
+        if not classrooms:
+            raise ValueError("no classrooms registered -- call POST /simulation/start or "
+                             "PUT /classrooms/{id} first")
+
+        if kind in ("proxy_attendance", "token_replay"):
+            return self._inject_token_reuse(student_id, classrooms, at)
+
+        from simulator.campus import SimSession, SimStudent, build_demo_event
+        rng = np.random.default_rng(int(at) ^ hash(kind) & 0xFFFF)
+        classroom_id = next(iter(classrooms))
+        other_id = next((c for c in classrooms if c != classroom_id), classroom_id)
+        student = SimStudent(student_id, student_id, "N/A", 1)
+        # window must be >= _normal_attendance's max dwell (90 min) or its rng.uniform(30min, min(90min,
+        # window)) call can see low > high and raise.
+        session = SimSession(f"DEMO_{classroom_id}_{int(at)}", "DEMO", classroom_id, at - 3600, at + 3600)
+        ev = build_demo_event(student, session, kind, classrooms, [], rng, other_classroom_id=other_id)
+        ev.wifi_fingerprints.clear()   # no real APs registered for a bare demo injection; BLE-only story
+        _, anomaly = self._record_simulated_event(ev, classrooms)
+        if anomaly is None:
+            raise RuntimeError(f"demo injection of kind={kind!r} did not produce an anomaly; this is a bug")
+        return anomaly
+
+    def _inject_token_reuse(self, student_id: str, classrooms: dict, at: float) -> AnomalyResult:
+        """proxy_attendance / token_replay: posts the student's own REAL,
+        currently-valid token (same HMAC derivation a real phone uses)
+        through two classroom scanners picked as far apart as possible,
+        seconds apart -- exactly what a cloned/relayed token looks like to
+        the server. This goes through engine.ingest_scans(), the SAME
+        token-resolution path a real phone's scan hits, so the anomaly
+        comes from the genuine check_token_reuse rule, not a synthesized
+        record (unlike the other demo kinds, which build a one-off
+        AttendanceEvent since they don't need real token mechanics)."""
+        secrets = self.store.student_secrets()
+        if student_id not in secrets:
+            raise ValueError(f"no token secret on file for {student_id!r}")
+        if len(classrooms) < 2:
+            raise ValueError("need at least 2 registered classrooms for a token-reuse demo "
+                             "(one isn't enough to show spatially-incompatible sightings)")
+        from .tokens import token_for, window_index
+        tok = token_for(secrets[student_id], window_index(at, self.engine.settings.token_window_s))
+
+        # pick the two FARTHEST-apart classrooms so the demo reliably clears reuse_min_distance_m
+        # regardless of how closely-packed the registered layout happens to be.
+        rooms = list(classrooms.values())
+        room_a, room_b = max(
+            ((a, b) for a in rooms for b in rooms if a.classroom_id != b.classroom_id),
+            key=lambda ab: math.hypot(ab[0].x - ab[1].x, ab[0].y - ab[1].y),
+        )
+        for room, ts in ((room_a, at), (room_b, at + 2)):
+            marker = room.ble_marker_id or f"{room.classroom_id}_BEACON"
+            if marker not in self.store.scanners():
+                self.store.upsert_scanner(marker, room.classroom_id, None)
+            self.engine.ingest_scans(marker, [(tok, -50, ts)])
+
+        ev = self._gather_evidence(student_id, f"DEMO_{room_a.classroom_id}", room_a.classroom_id, at + 2, None)
+        anomaly = self.run_anomaly_check(student_id, room_a.classroom_id, ev, at + 2)
+        if not anomaly.is_anomalous:
+            raise RuntimeError("token-reuse demo injection did not trigger an anomaly; this is a bug")
+        return anomaly
