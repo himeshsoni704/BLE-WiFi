@@ -1,0 +1,11 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sqlalchemy>=2.0
+pyjwt>=2.8
+numpy>=1.26
+scikit-learn>=1.4
+joblib>=1.3
+httpx>=0.27
+google-genai>=1.0        # only used when LLM_PROVIDER=gemini
+pytest>=8
+pytest-asyncio>=0.23

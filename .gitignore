@@ -7,3 +7,15 @@ __pycache__/
 *.db-shm
 backend/models/
 backend/recordings/
+
+# campus-presence generated artefacts (re-created by ml/*.py or on first backend start)
+campus-presence/backend/data/
+campus-presence/ml/models/*.joblib
+campus-presence/ml/data/*.csv
+campus-presence/frontend/node_modules/
+campus-presence/frontend/dist/
+campus-presence/android/.gradle/
+campus-presence/android/build/
+campus-presence/android/app/build/
+campus-presence/android/local.properties
+*.log

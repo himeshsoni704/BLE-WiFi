@@ -1,0 +1,113 @@
+{
+  "threshold_sweep": [
+    {
+      "contamination": 0.02,
+      "precision": 0.8333333333333334,
+      "recall": 0.37037037037037035,
+      "f1": 0.5128205128205128,
+      "normal_sessions_flagged": 0.018575851393188854
+    },
+    {
+      "contamination": 0.05,
+      "precision": 0.7466666666666667,
+      "recall": 0.691358024691358,
+      "f1": 0.717948717948718,
+      "normal_sessions_flagged": 0.02786377708978328
+    },
+    {
+      "contamination": 0.08,
+      "precision": 0.7053571428571429,
+      "recall": 0.9753086419753086,
+      "f1": 0.8186528497409327,
+      "normal_sessions_flagged": 0.058823529411764705
+    },
+    {
+      "contamination": 0.12,
+      "precision": 0.6428571428571429,
+      "recall": 1.0,
+      "f1": 0.782608695652174,
+      "normal_sessions_flagged": 0.09597523219814241
+    }
+  ],
+  "threshold_note": "`contamination` sets the flagging cut-off. It trades review load (normal sessions flagged) against recall; the default was chosen after looking at this synthetic split, so treat the reported recall as optimistic.",
+  "n_train_rows": 775,
+  "n_train_unlabeled_contaminants": 23,
+  "n_test": 420,
+  "n_test_anomalies": 81,
+  "accuracy": 0.8952380952380953,
+  "precision": 0.7466666666666667,
+  "recall": 0.691358024691358,
+  "f1": 0.717948717948718,
+  "roc_auc_raw_score": 0.9630722167595324,
+  "confusion_matrix": {
+    "labels": [
+      "normal",
+      "anomaly"
+    ],
+    "matrix": [
+      [
+        320,
+        19
+      ],
+      [
+        25,
+        56
+      ]
+    ],
+    "note": "rows = true, columns = predicted (flagged by Isolation Forest)"
+  },
+  "per_scenario": {
+    "false_positive": {
+      "n": 16,
+      "flagged_by_isolation_forest": 0.625,
+      "hit_by_deterministic_rules": 0.9375
+    },
+    "impossible_movement": {
+      "n": 13,
+      "flagged_by_isolation_forest": 1.0,
+      "hit_by_deterministic_rules": 0.6153846153846154
+    },
+    "normal": {
+      "n": 323,
+      "flagged_by_isolation_forest": 0.02786377708978328,
+      "hit_by_deterministic_rules": 0.030959752321981424
+    },
+    "proxy": {
+      "n": 24,
+      "flagged_by_isolation_forest": 0.5416666666666666,
+      "hit_by_deterministic_rules": 0.0
+    },
+    "short_presence": {
+      "n": 16,
+      "flagged_by_isolation_forest": 1.0,
+      "hit_by_deterministic_rules": 0.25
+    },
+    "token_replay": {
+      "n": 13,
+      "flagged_by_isolation_forest": 0.5384615384615384,
+      "hit_by_deterministic_rules": 1.0
+    },
+    "wifi_ble_mismatch": {
+      "n": 15,
+      "flagged_by_isolation_forest": 0.4666666666666667,
+      "hit_by_deterministic_rules": 1.0
+    }
+  },
+  "features": [
+    "ble_duration",
+    "mean_ble_rssi",
+    "wifi_confidence",
+    "nearby_device_count",
+    "token_reuse_count",
+    "time_between_locations",
+    "estimated_speed",
+    "number_of_classrooms",
+    "session_switch_count",
+    "signal_consistency",
+    "peer_rssi_max",
+    "rssi_twin_distance"
+  ],
+  "contamination": 0.05,
+  "data": "synthetic",
+  "caveat": "Anomalies are patterns defined by this project's simulator, so recall here shows the forest can separate those patterns, not that it would catch real misconduct. 'false_positive' rows are benign-but-odd cases, counted as normal. Isolation Forest flags unusual combinations; it does not decide attendance."
+}
