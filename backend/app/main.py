@@ -380,6 +380,23 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
             raise HTTPException(404, "unknown anomaly_id")
         return {"accepted": True}
 
+    @app.get("/feedback", dependencies=auth)
+    def get_feedback(limit: int = 200) -> list[dict]:
+        """History for the Feedback page: every Confirm/False-Positive
+        decision faculty have submitted, newest first, joined back onto
+        the anomaly it resolved so the UI can show context without a
+        second round-trip per row."""
+        rows = []
+        for f in engine.store.feedback_history(limit):
+            anomaly = engine.store.anomaly(f.anomaly_id)
+            rows.append({
+                "id": f.id, "anomaly_id": f.anomaly_id, "decision": f.decision,
+                "comment": f.comment, "ts": f.ts,
+                "student_id": anomaly.student_id if anomaly else None,
+                "anomaly_type": anomaly.type if anomaly else None,
+            })
+        return rows
+
     @app.post("/explain-anomaly", dependencies=auth)
     async def post_explain_anomaly(body: ExplainAnomalyIn) -> dict:
         try:

@@ -122,6 +122,13 @@ def test_full_demo_flow_presence_to_feedback(world):
     })
     assert r.status_code == 200, r.text
 
+    # Step 6b: the Feedback page's history endpoint shows it, joined onto the anomaly.
+    r = client.get("/feedback")
+    assert r.status_code == 200, r.text
+    history = r.json()
+    assert any(f["anomaly_id"] == anomaly_id and f["decision"] == "false_positive"
+               and f["student_id"] == "STU102" for f in history)
+
     # Step 7: that feedback is now a verified case RAG can retrieve.
     r = client.post("/rag/retrieve", json={"query": "temporary token observed multiple devices", "k": 1})
     assert r.status_code == 200, r.text
