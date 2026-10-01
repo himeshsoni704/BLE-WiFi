@@ -456,6 +456,13 @@ class Store:
         )
         return bool(rows) and (at_or_before - rows[0][0] <= max_age_s)
 
+    def rfid_ever_read(self, student_id: str) -> bool:
+        """Whether an RFID reader has EVER reported this student -- used to
+        decide if the optional RFID signal is "available" at all for them,
+        independent of whether a read is fresh enough to count right now
+        (that's latest_rfid_read's job)."""
+        return bool(self._read("SELECT 1 FROM rfid_reads WHERE student_id=? LIMIT 1", (student_id,)))
+
     def purge_extension_before(self, ts: float) -> int:
         """Same retention policy as purge_before(), for the extension tables."""
         with self._lock, self._conn:
