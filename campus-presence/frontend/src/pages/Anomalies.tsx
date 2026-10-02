@@ -3,7 +3,7 @@ import { PageHeader } from "../components/Layout";
 import { Card } from "../components/Card";
 import { SeverityBadge } from "../components/Badge";
 import { api } from "../services/api";
-import type { AnomalyDto, RetrievedCase } from "../types/api";
+import type { AnomalyRow, RetrievedCase } from "../types/api";
 
 const STATUS_TABS = [
   { value: "open", label: "Open" },
@@ -12,12 +12,21 @@ const STATUS_TABS = [
   { value: "", label: "All" },
 ];
 
+interface ExplainState {
+  text: string;
+  cases: RetrievedCase[];
+  provider: string;
+  configured: string;
+  fallbackReason: string | null;
+  groundingPassed: boolean;
+}
+
 export function Anomalies() {
   const [status, setStatus] = useState("open");
-  const [anomalies, setAnomalies] = useState<AnomalyDto[]>([]);
+  const [anomalies, setAnomalies] = useState<AnomalyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
-  const [explanations, setExplanations] = useState<Record<number, { text: string; cases: RetrievedCase[] }>>({});
+  const [explanations, setExplanations] = useState<Record<number, ExplainState>>({});
   const [comments, setComments] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -25,8 +34,8 @@ export function Anomalies() {
     setLoading(true);
     api
       .anomalies(status || undefined)
-      .then((rows) => {
-        setAnomalies(rows.sort((a, b) => b.ts - a.ts));
+      .then((res) => {
+        setAnomalies([...res.anomalies].sort((a, b) => b.ts - a.ts));
         setError(null);
       })
       .catch((e) => setError(String(e)))
@@ -39,7 +48,14 @@ export function Anomalies() {
     setBusy(id);
     try {
       const res = await api.explainAnomaly(id);
-      setExplanations((prev) => ({ ...prev, [id]: { text: res.explanation, cases: res.similar_verified_cases } }));
+      setExplanations((prev) => ({
+        ...prev,
+        [id]: {
+          text: res.explanation.text, cases: res.similar_cases, provider: res.provider.used,
+          configured: res.provider.configured, fallbackReason: res.explanation.fallback_reason,
+          groundingPassed: res.explanation.grounding.passed,
+        },
+      }));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -47,10 +63,10 @@ export function Anomalies() {
     }
   };
 
-  const decide = async (id: number, decision: "confirmed" | "false_positive") => {
+  const decide = async (id: number, action: "confirm" | "false_positive") => {
     setBusy(id);
     try {
-      await api.submitFeedback(id, decision, comments[id]?.trim() || undefined);
+      await api.submitFeedback(id, action, comments[id]?.trim() || undefined);
       load();
     } catch (e) {
       setError(String(e));
@@ -104,19 +120,20 @@ export function Anomalies() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <SeverityBadge severity={a.severity} />
-                    <span className="font-medium" style={{ color: "var(--text)" }}>{a.student_id}</span>
-                    <span style={{ color: "var(--text-dim)" }}>{a.type.replace(/_/g, " ")}</span>
+                    <SeverityBadge severity={a.rule_details[0]?.severity ?? (a.isolation_flagged ? "medium" : "low")} />
+                    <span className="font-medium" style={{ color: "var(--text)" }}>{a.name}</span>
+                    <span style={{ color: "var(--text-dim)" }}>{a.session_code} · Room {a.room}</span>
                   </div>
                   <div className="mt-1 text-xs" style={{ color: "var(--text-faint)" }}>
                     {new Date(a.ts * 1000).toLocaleString()}
-                    {a.iforest_score !== null && <> · iforest score {a.iforest_score.toFixed(3)}</>}
-                    · status {a.status}
+                    {a.risk_demo_0_100 !== null && <> · risk {a.risk_demo_0_100.toFixed(0)}/100</>}
+                    {a.isolation_score_raw !== null && <> (raw {a.isolation_score_raw.toFixed(3)})</>}
+                    {" · status "}{a.status}
                   </div>
-                  {a.reasons.length > 0 && (
+                  {a.rule_details.length > 0 && (
                     <ul className="mt-2 list-disc pl-4 text-xs" style={{ color: "var(--text-dim)" }}>
-                      {a.reasons.map((r, i) => (
-                        <li key={i}>{r}</li>
+                      {a.rule_details.map((r, i) => (
+                        <li key={i}>{r.detail}</li>
                       ))}
                     </ul>
                   )}
@@ -134,7 +151,7 @@ export function Anomalies() {
                     <>
                       <button
                         disabled={busy === a.id}
-                        onClick={() => decide(a.id, "confirmed")}
+                        onClick={() => decide(a.id, "confirm")}
                         className="rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                         style={{ background: "var(--red-soft)", color: "var(--red)" }}
                       >
@@ -163,12 +180,17 @@ export function Anomalies() {
                 />
               )}
 
-              {(exp || a.explanation) && (
+              {exp && (
                 <div className="mt-3 rounded-lg border-l-2 px-3 py-2 text-xs leading-relaxed" style={{ borderColor: "var(--accent)", background: "var(--bg-elevated)", color: "var(--text-dim)" }}>
-                  {exp?.text ?? a.explanation}
-                  {exp && exp.cases.length > 0 && (
-                    <div className="mt-2 text-xs" style={{ color: "var(--text-faint)" }}>
-                      Similar past cases: {exp.cases.map((c) => `${c.resolution} (${(c.similarity * 100).toFixed(0)}%)`).join("; ")}
+                  {exp.text}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--text-faint)" }}>
+                    <span>via {exp.provider}{exp.provider !== exp.configured ? ` (configured: ${exp.configured})` : ""}</span>
+                    {!exp.groundingPassed && <span style={{ color: "var(--amber)" }}>fell back after an ungrounded response</span>}
+                    {exp.fallbackReason && <span title={exp.fallbackReason}>· fallback</span>}
+                  </div>
+                  {exp.cases.length > 0 && (
+                    <div className="mt-1 text-xs" style={{ color: "var(--text-faint)" }}>
+                      Similar past cases: {exp.cases.map((c) => `${c.title} — ${c.resolution.replace(/_/g, " ")} (${(c.similarity * 100).toFixed(0)}%)`).join("; ")}
                     </div>
                   )}
                 </div>

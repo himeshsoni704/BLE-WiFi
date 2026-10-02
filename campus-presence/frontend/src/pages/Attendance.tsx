@@ -3,19 +3,19 @@ import { PageHeader } from "../components/Layout";
 import { Card } from "../components/Card";
 import { StateBadge, SourceBadge } from "../components/Badge";
 import { api } from "../services/api";
-import type { AttendanceState, LocationRow } from "../types/api";
+import type { AttendanceResponse, AttendanceState } from "../types/api";
 
 const STATE_FILTERS: { value: AttendanceState | "all"; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "present", label: "Present" },
-  { value: "likely_present", label: "Likely Present" },
-  { value: "review_required", label: "Review Required" },
-  { value: "absent", label: "Absent" },
+  { value: "PRESENT", label: "Present" },
+  { value: "LIKELY_PRESENT", label: "Likely Present" },
+  { value: "REVIEW_REQUIRED", label: "Review Required" },
+  { value: "ABSENT", label: "Absent" },
 ];
 
 export function Attendance() {
-  const [rows, setRows] = useState<LocationRow[]>([]);
-  const [asOf, setAsOf] = useState<number | null>(null);
+  const [data, setData] = useState<AttendanceResponse | null>(null);
+  const [sessionId, setSessionId] = useState<number | undefined>(undefined);
   const [filter, setFilter] = useState<AttendanceState | "all">("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -24,11 +24,11 @@ export function Attendance() {
     let cancelled = false;
     const load = () =>
       api
-        .locations()
-        .then((feed) => {
+        .attendance(sessionId)
+        .then((res) => {
           if (cancelled) return;
-          setRows(feed.students);
-          setAsOf(feed.ts);
+          setData(res);
+          if (sessionId === undefined && res.selected_session_id !== null) setSessionId(res.selected_session_id);
           setLoading(false);
         })
         .catch(() => !cancelled && setLoading(false));
@@ -38,24 +38,39 @@ export function Attendance() {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [sessionId]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const rows = data?.rows ?? [];
     return rows
-      .filter((r) => filter === "all" || r.state === filter)
+      .filter((r) => filter === "all" || r.final_state === filter)
       .filter((r) => !q || r.name.toLowerCase().includes(q) || r.student_id.toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [rows, filter, query]);
+  }, [data, filter, query]);
+
+  const session = data?.sessions.find((s) => s.id === sessionId);
 
   return (
     <div>
       <PageHeader
         title="Attendance"
-        subtitle={asOf ? `Snapshot as of ${new Date(asOf * 1000).toLocaleTimeString()}` : "Loading…"}
+        subtitle={session ? `${session.code} — ${session.title || session.room}, ${session.status.replace("_", " ")}` : "Loading…"}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <select
+          value={sessionId ?? ""}
+          onChange={(e) => setSessionId(Number(e.target.value))}
+          className="rounded-lg border px-3 py-1.5 text-sm outline-none"
+          style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text)" }}
+        >
+          {(data?.sessions ?? []).map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.code} · Room {s.room} · {s.source} ({s.status.replace("_", " ")})
+            </option>
+          ))}
+        </select>
         <div className="flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-elevated)" }}>
           {STATE_FILTERS.map((f) => (
             <button
@@ -79,7 +94,7 @@ export function Attendance() {
           style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text)" }}
         />
         <span className="ml-auto text-xs" style={{ color: "var(--text-faint)" }}>
-          {filtered.length} of {rows.length}
+          {filtered.length} of {data?.rows.length ?? 0}
         </span>
       </div>
 
@@ -88,11 +103,11 @@ export function Attendance() {
           <thead>
             <tr className="border-b text-left text-xs uppercase tracking-wide" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
               <th className="px-4 py-3 font-medium">Student</th>
-              <th className="px-4 py-3 font-medium">Classroom</th>
               <th className="px-4 py-3 font-medium">State</th>
               <th className="px-4 py-3 font-medium">Score</th>
+              <th className="px-4 py-3 font-medium">Signal families</th>
               <th className="px-4 py-3 font-medium">Source</th>
-              <th className="px-4 py-3 font-medium">Last update</th>
+              <th className="px-4 py-3 font-medium">Updated</th>
             </tr>
           </thead>
           <tbody>
@@ -109,12 +124,17 @@ export function Attendance() {
                   <div style={{ color: "var(--text)" }}>{r.name}</div>
                   <div className="text-xs" style={{ color: "var(--text-faint)" }}>{r.student_id}</div>
                 </td>
-                <td className="px-4 py-2.5" style={{ color: "var(--text-dim)" }}>{r.classroom_name}</td>
-                <td className="px-4 py-2.5"><StateBadge state={r.state} /></td>
-                <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--text-dim)" }}>{r.confidence.toFixed(0)}%</td>
+                <td className="px-4 py-2.5">
+                  <StateBadge state={r.final_state} />
+                  {r.final_state !== r.fused_state && (
+                    <div className="mt-1 text-xs" style={{ color: "var(--amber)" }}>open anomaly</div>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--text-dim)" }}>{r.score.toFixed(0)}%</td>
+                <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--text-dim)" }}>{r.families ?? 0}</td>
                 <td className="px-4 py-2.5"><SourceBadge source={r.source} /></td>
                 <td className="px-4 py-2.5 text-xs" style={{ color: "var(--text-faint)" }}>
-                  {new Date(r.last_update * 1000).toLocaleTimeString()}
+                  {new Date(r.updated_at * 1000).toLocaleTimeString()}
                 </td>
               </tr>
             ))}

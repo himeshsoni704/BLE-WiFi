@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: "▣" },
@@ -12,6 +13,7 @@ const NAV = [
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
+  const { me, logout } = useAuth();
   return (
     <div className="flex min-h-screen">
       <aside
@@ -47,10 +49,23 @@ export function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-auto px-3 pt-4 text-[11px] leading-relaxed" style={{ color: "var(--text-faint)" }}>
-          Decentralized evidence generation with authorized aggregation.
-          <br />
-          This dashboard is an authorized faculty/admin view, not a public feed.
+        <div className="mt-auto flex flex-col gap-3 px-3 pt-4">
+          {me && (
+            <div className="flex items-center justify-between rounded-lg px-2 py-1.5 text-xs" style={{ background: "var(--bg-card)" }}>
+              <div className="min-w-0">
+                <div className="truncate font-medium" style={{ color: "var(--text)" }}>{me.username}</div>
+                <div className="capitalize" style={{ color: "var(--text-faint)" }}>{me.role}</div>
+              </div>
+              <button onClick={logout} className="shrink-0 text-xs font-medium" style={{ color: "var(--accent)" }}>
+                Sign out
+              </button>
+            </div>
+          )}
+          <div className="text-[11px] leading-relaxed" style={{ color: "var(--text-faint)" }}>
+            Decentralized evidence generation with authorized aggregation.
+            <br />
+            This dashboard is an authorized faculty/admin view, not a public feed.
+          </div>
         </div>
       </aside>
       <main className="min-w-0 flex-1 overflow-y-auto">

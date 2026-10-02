@@ -1,36 +1,53 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "../components/Layout";
 import { Card, StatCard } from "../components/Card";
 import { api } from "../services/api";
-import type { DemoInjectKind, DemoInjectResult, SimulationSummary } from "../types/api";
+import type { DemoScenario, SimulationFullSummary, SimulationStartResponse, SimulationStatus } from "../types/api";
 
-const INJECT_KINDS: { kind: DemoInjectKind; label: string; description: string }[] = [
-  { kind: "proxy_attendance", label: "Proxy Attendance", description: "A student's token is read by two classroom markers in a time window too short for one person to walk between them." },
+const SCENARIOS: { kind: DemoScenario; label: string; description: string }[] = [
+  { kind: "proxy", label: "Proxy Attendance", description: "A student's token is read by two classroom markers in a time window too short for one person to walk between them." },
   { kind: "impossible_movement", label: "Impossible Movement", description: "Two sightings imply a travel speed no student could achieve on foot." },
   { kind: "wifi_ble_mismatch", label: "Wi-Fi / BLE Mismatch", description: "The Wi-Fi zone prediction and the BLE classroom marker disagree." },
   { kind: "token_replay", label: "Token Replay", description: "The same rotating token is observed again outside its valid time window." },
-  { kind: "device_clustering", label: "Device Clustering", description: "An unusually large number of distinct nearby devices for one student." },
+  { kind: "false_positive", label: "False Positive (benign)", description: "A scenario tuned to look odd but resolve as a false positive — exercises the review flow without real misconduct." },
   { kind: "short_presence", label: "Short Presence", description: "Evidence is sustained for far less than the session length, well under the dwell-time threshold." },
 ];
 
 export function DemoControl() {
-  const [seed, setSeed] = useState(0);
+  const [seed, setSeed] = useState(1);
   const [starting, setStarting] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [summary, setSummary] = useState<SimulationSummary | null>(null);
-  const [studentId, setStudentId] = useState("");
-  const [injecting, setInjecting] = useState<DemoInjectKind | null>(null);
-  const [log, setLog] = useState<{ kind: DemoInjectKind; result: DemoInjectResult; ts: number }[]>([]);
+  const [status, setStatus] = useState<SimulationStatus | null>(null);
+  const [injecting, setInjecting] = useState<DemoScenario | null>(null);
+  const [log, setLog] = useState<{ kind: string; result: SimulationStartResponse; ts: number }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refreshStatus = () => api.simulationStatus().then(setStatus).catch(() => {});
+
+  useEffect(() => {
+    refreshStatus();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const start = async () => {
     setStarting(true);
     setError(null);
     try {
-      setSummary(await api.simulationStart(300, 20, 10, 0.08, seed));
+      await api.simulationStart("full", 300, seed, false);
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        const s = await api.simulationStatus();
+        setStatus(s);
+        if (!s.running) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setStarting(false);
+        }
+      }, 1200);
     } catch (e) {
       setError(String(e));
-    } finally {
       setStarting(false);
     }
   };
@@ -40,8 +57,8 @@ export function DemoControl() {
     setError(null);
     try {
       await api.simulationReset();
-      setSummary(null);
       setLog([]);
+      await refreshStatus();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -49,11 +66,11 @@ export function DemoControl() {
     }
   };
 
-  const inject = async (kind: DemoInjectKind) => {
+  const inject = async (kind: DemoScenario) => {
     setInjecting(kind);
     setError(null);
     try {
-      const result = await api.simulationInject(kind, studentId.trim() || undefined);
+      const result = await api.simulationStart(kind, 300, seed, true);
       setLog((prev) => [{ kind, result, ts: Date.now() / 1000 }, ...prev].slice(0, 20));
     } catch (e) {
       setError(String(e));
@@ -61,6 +78,8 @@ export function DemoControl() {
       setInjecting(null);
     }
   };
+
+  const summary: SimulationFullSummary | null = status?.last ?? null;
 
   return (
     <div>
@@ -86,8 +105,8 @@ export function DemoControl() {
           Seed campus population
         </h2>
         <p className="mb-3 text-sm" style={{ color: "var(--text-dim)" }}>
-          Generates 300 students across 20 classrooms with 10 Wi-Fi APs and BLE markers, realistic RF noise, and an
-          ~8% baseline anomaly rate. Safe to call again with the same seed.
+          Generates up to 300 students across 20 classrooms with 10 Wi-Fi APs and BLE markers, realistic RF noise,
+          and 6 anomaly scenarios injected automatically. Safe to call again with the same seed.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-xs" style={{ color: "var(--text-faint)" }}>
@@ -101,38 +120,40 @@ export function DemoControl() {
             />
           </label>
           <button
-            disabled={starting}
+            disabled={starting || status?.running}
             onClick={start}
             className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
             style={{ background: "var(--accent)", color: "#fff" }}
           >
-            {starting ? "Starting…" : "Start Simulation"}
+            {status?.running ? "Running…" : "Start Simulation"}
           </button>
           <button
-            disabled={resetting}
+            disabled={resetting || status?.running}
             onClick={reset}
             className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
             style={{ background: "var(--bg-elevated)", color: "var(--text-dim)" }}
           >
             {resetting ? "Resetting…" : "Reset All Data"}
           </button>
-          <input
-            value={studentId}
-            onChange={(e) => setStudentId(e.target.value)}
-            placeholder="Target student_id (optional — random if blank)"
-            className="ml-auto min-w-[260px] rounded-lg border px-3 py-1.5 text-xs outline-none"
-            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text)" }}
-          />
         </div>
 
-        {summary && (
+        {status?.running && (
+          <div className="mt-4">
+            <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-elevated)" }}>
+              <div className="h-full rounded-full transition-all" style={{ width: `${Math.round(status.progress * 100)}%`, background: "var(--accent)" }} />
+            </div>
+            <div className="mt-1.5 text-xs" style={{ color: "var(--text-faint)" }}>{status.message}</div>
+          </div>
+        )}
+
+        {summary && !status?.running && (
           <div className="mt-4 grid grid-cols-3 gap-3 md:grid-cols-6">
             <StatCard label="Students" value={summary.students} />
-            <StatCard label="Classrooms" value={summary.classrooms} />
-            <StatCard label="Wi-Fi APs" value={summary.wifi_aps} />
-            <StatCard label="BLE Markers" value={summary.ble_markers} />
             <StatCard label="Sessions" value={summary.sessions} />
-            <StatCard label="Anomalies Seeded" value={summary.anomalies_injected} accent="var(--amber)" />
+            <StatCard label="Scenarios Injected" value={summary.injected.length} accent="var(--amber)" />
+            <StatCard label="Skipped" value={summary.skipped_scenarios.length} />
+            <StatCard label="Seconds" value={summary.seconds?.toFixed(0) ?? "—"} />
+            <StatCard label="Simulated Students" value={status?.simulated_students ?? 0} />
           </div>
         )}
       </Card>
@@ -141,8 +162,11 @@ export function DemoControl() {
         <h2 className="mb-3 text-sm font-semibold" style={{ color: "var(--text)" }}>
           Inject an anomaly
         </h2>
+        <p className="mb-3 text-xs" style={{ color: "var(--text-faint)" }}>
+          Requires a simulation to already exist (Start Simulation above, or a previous run).
+        </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {INJECT_KINDS.map((k) => (
+          {SCENARIOS.map((k) => (
             <button
               key={k.kind}
               disabled={injecting !== null}
@@ -173,20 +197,15 @@ export function DemoControl() {
               <div key={i} className="rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg-elevated)" }}>
                 <div className="flex items-center justify-between">
                   <span className="font-medium" style={{ color: "var(--text)" }}>
-                    {INJECT_KINDS.find((k) => k.kind === entry.kind)?.label ?? entry.kind}
+                    {SCENARIOS.find((k) => k.kind === entry.kind)?.label ?? entry.kind}
                   </span>
-                  <span style={{ color: entry.result.is_anomalous ? "var(--red)" : "var(--green)" }}>
-                    {entry.result.is_anomalous ? `flagged (${entry.result.severity})` : "not flagged"}
+                  <span style={{ color: (entry.result.anomaly_ids?.length ?? 0) > 0 ? "var(--red)" : "var(--green)" }}>
+                    {(entry.result.anomaly_ids?.length ?? 0) > 0 ? `${entry.result.anomaly_ids?.length} anomaly(ies) flagged` : "not flagged"}
                   </span>
                 </div>
-                {entry.result.anomaly_id !== null && (
-                  <div className="mt-1" style={{ color: "var(--text-faint)" }}>
-                    anomaly #{entry.result.anomaly_id}
-                    {entry.result.isolation_forest_score !== null &&
-                      ` · iforest ${entry.result.isolation_forest_score.toFixed(3)}`}
-                    {entry.result.reasons.length > 0 && <> · {entry.result.reasons.join("; ")}</>}
-                  </div>
-                )}
+                <div className="mt-1" style={{ color: "var(--text-faint)" }}>
+                  {entry.result.session_code} · Room {entry.result.room} · {entry.result.target_student_keys?.length ?? 0} target student(s) · see Anomalies page for details
+                </div>
               </div>
             ))}
           </div>

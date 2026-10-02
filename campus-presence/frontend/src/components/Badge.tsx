@@ -1,14 +1,14 @@
-import type { AttendanceState } from "../types/api";
+import type { AttendanceState, Source } from "../types/api";
 
 const STATE_STYLE: Record<AttendanceState, { bg: string; fg: string; label: string }> = {
-  present: { bg: "var(--green-soft)", fg: "var(--green)", label: "Present" },
-  likely_present: { bg: "var(--accent-soft)", fg: "var(--accent)", label: "Likely Present" },
-  review_required: { bg: "var(--amber-soft)", fg: "var(--amber)", label: "Review Required" },
-  absent: { bg: "var(--red-soft)", fg: "var(--red)", label: "Absent" },
+  PRESENT: { bg: "var(--green-soft)", fg: "var(--green)", label: "Present" },
+  LIKELY_PRESENT: { bg: "var(--accent-soft)", fg: "var(--accent)", label: "Likely Present" },
+  REVIEW_REQUIRED: { bg: "var(--amber-soft)", fg: "var(--amber)", label: "Review Required" },
+  ABSENT: { bg: "var(--red-soft)", fg: "var(--red)", label: "Absent" },
 };
 
 export function StateBadge({ state }: { state: AttendanceState }) {
-  const s = STATE_STYLE[state] ?? STATE_STYLE.absent;
+  const s = STATE_STYLE[state] ?? STATE_STYLE.ABSENT;
   return (
     <span
       className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap"
@@ -19,8 +19,8 @@ export function StateBadge({ state }: { state: AttendanceState }) {
   );
 }
 
-export function SourceBadge({ source }: { source: "live" | "simulated" }) {
-  const live = source === "live";
+export function SourceBadge({ source }: { source: Source }) {
+  const live = source === "LIVE";
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase whitespace-nowrap"
@@ -38,7 +38,9 @@ export function SourceBadge({ source }: { source: "live" | "simulated" }) {
 export function SeverityBadge({ severity }: { severity: string }) {
   const style: Record<string, { bg: string; fg: string }> = {
     high: { bg: "var(--red-soft)", fg: "var(--red)" },
+    warn: { bg: "var(--amber-soft)", fg: "var(--amber)" },
     medium: { bg: "var(--amber-soft)", fg: "var(--amber)" },
+    info: { bg: "var(--border-soft)", fg: "var(--text-dim)" },
     low: { bg: "var(--border-soft)", fg: "var(--text-dim)" },
     none: { bg: "var(--border-soft)", fg: "var(--text-faint)" },
   };
