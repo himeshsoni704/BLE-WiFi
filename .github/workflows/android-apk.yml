@@ -1,0 +1,39 @@
+name: Android APK
+
+# Builds the campus-presence phone app and publishes the APK as a downloadable artifact.
+# Run it from the Actions tab ("Run workflow"), or it runs on any push that touches the app.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "campus-presence/android/**"
+      - ".github/workflows/android-apk.yml"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: campus-presence/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-presence-debug-apk
+          path: campus-presence/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Unit tests
+        run: ./gradlew test --no-daemon --stacktrace
