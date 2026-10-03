@@ -13,6 +13,7 @@ from .core import Services
 from .db import Base, make_engine, make_session_factory, session_scope
 from .llm import get_provider
 from .models import Location, Observation
+from .knowledge import KnowledgeBase
 from .rag import CaseIndex
 from .seed import ensure_live_session, seed_campus, seed_demo_accounts
 
@@ -73,5 +74,6 @@ def bootstrap(settings: Settings, clock=time.time, train_missing: bool = True, q
     svc.rag = CaseIndex(svc.SessionLocal)
     svc.rag.seed_if_empty()
     svc.rag.rebuild()
+    svc.kb = KnowledgeBase()
     svc.llm, svc.llm_note = get_provider(settings)
     return svc
