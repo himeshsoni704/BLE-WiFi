@@ -25,6 +25,36 @@ attendance state or showing the system to people who will.
 - The Isolation Forest is skipped for a student with fewer than 3 distinct nearby devices: it was trained at classroom
   density and its score would be meaningless in a near-empty room.
 
+## What the model audit found (`python ml/audit_models.py`, synthetic data)
+
+- **Proxy phones are the weakest spot.** Several phones carried together are caught by the Isolation Forest alone, and no
+  deterministic rule covers them. Across 8 training splits the forest caught 65% of held-out proxy cases on average, from
+  10% to 96% depending on the split (worst when many proxy rows land in the forest's own training data, because a dense
+  cluster of look-alike rows stops looking unusual). The feature that separates them, `rssi_twin_distance`, is computed but no
+  rule uses it. A rule on it would catch every synthetic proxy, but real friends sitting side by side may track each other
+  closely too, so it needs real classroom data to set a threshold. Treat proxy detection as unreliable until then.
+- **Every other injected scenario is caught by the forest or a rule in at least 90% of cases on every split** (token replay
+  and Wi-Fi/Bluetooth mismatch by the rules, short presence and impossible movement by the forest). The forest alone is not
+  enough for token replay: depending on the dataset and split it caught anywhere from 0% to 100%, because that feature
+  almost never varies in training, so the rules are what make that scenario reliable.
+- **The forest is nearly blind to features that rarely vary** in training (token reuse, room switching). The model report
+  lists them (`weak_features`), and the rules are what cover them.
+- **Normal sessions flagged:** about 2% by the forest, 4.5% by the rules, 5% by either, on synthetic data.
+- **Wi-Fi localiser, 22 zones:** about 76% accurate per scan, 70% of errors are the room next door. Its `confidence` is
+  reasonably honest (readings it called 95%+ were right 96% of the time). It degrades fast with noise: +-8 dB extra noise
+  drops it to about 55%, and so does not hearing 3 of 10 access points. Expect a real building to look more like the
+  degraded rows than the clean one.
+
+## About the explanations
+
+- The offline explainer's causes come from a fixed table keyed on the rules and features; they are plausible candidates, not
+  findings. Likelihood only reflects how similar past cases were resolved, so with no similar cases every cause is "possible".
+- The attribution describes the forest's score against a synthetic-training baseline. A feature the forest ignores gets no
+  credit however extreme it is, and the card says so by showing no driver rather than inventing one.
+- The citation checks stop a model from inventing evidence, sources or accusations. They cannot verify that a sentence is
+  true. The knowledge base is static text written by the developers; it is only as good as what is in it.
+- The Gemini path has been tested with a fake client and against the real SDK's schema conversion, but not against a live key.
+
 ## Things it cannot prevent
 
 - **Relay.** A token proves a phone knows the secret, not where the phone is. Someone who forwards a live token to a

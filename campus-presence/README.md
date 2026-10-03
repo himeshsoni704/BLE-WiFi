@@ -71,6 +71,46 @@ Follow [android/README.md](android/README.md): survey the rooms' Wi-Fi, run one 
 student, and watch the student become `PRESENT` on the dashboard. Live phones and the simulation can run side by side:
 the map keeps each source's own time window, so a live phone does not hide the simulated crowd.
 
+## Explanations: Gemini, a small knowledge base, and score attribution
+
+When faculty press **Explain** on an anomaly, three things are combined, all visible on the card:
+
+1. **Why the forest flagged it.** Exact Shapley values split the Isolation Forest's score among its 12 features against a
+   typical-normal baseline, so the card shows "flagged mostly because of implied travel speed and rooms within 5 minutes",
+   and whether the record would have passed had those been typical. It explains the model's score, not anyone's intent.
+2. **What the system knows.** A short text knowledge base (`backend/app/knowledge/*.md`, 16 passages: what each rule and
+   feature means, common innocent causes, policy) plus similar cases faculty already resolved. Retrieval is deterministic
+   (tag overlap plus TF-IDF). Add your own campus policy as new `## KB-... | Title` passages.
+3. **Reasoning over both.** Ranked possible causes, each with a likelihood and the evidence fields and sources it cites, and
+   checks faculty can make to tell them apart.
+
+The default explainer is offline and deterministic. To use Gemini for the reasoning instead:
+
+```powershell
+# Windows PowerShell, in the same window you start the backend from
+$env:LLM_PROVIDER = "gemini"; $env:GEMINI_API_KEY = "<your key>"; $env:GEMINI_MODEL = "<a model id your key can use>"
+uvicorn app.main:create_app --factory --host 0.0.0.0
+```
+
+```bash
+# macOS / Linux
+LLM_PROVIDER=gemini GEMINI_API_KEY=... GEMINI_MODEL=... uvicorn app.main:create_app --factory --host 0.0.0.0
+```
+
+`GET /config` reports which provider is active, and the Explain card shows which one answered. **Gemini is never trusted
+blindly.** Its answer is rejected, and the offline explainer's used instead (with the reason shown), if it:
+mentions a number that is not in the evidence, cites an evidence field, passage or case that was not provided, offers a
+cause with no citation at all, uses an unknown likelihood, or uses accusatory wording. This catches invented facts and
+unsupported causes; it cannot prove that a sentence is true, which is why the cited sources are shown next to it.
+
+What leaves your machine when Gemini is on: the pseudonymous student label (a hash, unless `GEMINI_SEND_REAL_IDS=1`), rooms,
+signal values, scores, the retrieved knowledge passages, and the **text of similar past cases, including the faculty comments
+typed on them**. Do not type anything into a Confirm/False Positive comment that should not reach Google.
+
+Checking the models: `python ml/audit_models.py` (after `python ml/generate_dataset.py`) reports how stable the numbers are
+across splits, where each model fails, and how much of each scenario the rules and the forest cover. See
+[docs/LIMITATIONS.md](docs/LIMITATIONS.md) for what it found.
+
 ## Configuration
 
 Environment variables, all optional:
@@ -93,7 +133,7 @@ Environment variables, all optional:
 ## Tests
 
 ```bash
-cd backend && pytest                    # about a minute
+cd backend && pytest                    # about two minutes
 cd ../android && ./gradlew test         # JVM unit tests for the app's protocol code
 cd ../frontend && npm run build         # type-check + build
 ```
