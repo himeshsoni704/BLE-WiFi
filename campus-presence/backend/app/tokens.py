@@ -13,7 +13,7 @@ A token is meaningless to anyone who does not hold the secret, changes every 30 
 accepted for +/-1 window, so a captured token stops working within about a minute.
 Observations also carry a client nonce which the server stores uniquely, so an exact
 upload cannot be replayed. A *relay* of a live token within its window is NOT prevented by
-tokens alone; that is what the contradiction/reuse rules are for (see docs/LIMITATIONS.md).
+tokens alone; that is what the contradiction/reuse rules are for (see campus-presence/docs/LIMITATIONS.md).
 """
 from __future__ import annotations
 
