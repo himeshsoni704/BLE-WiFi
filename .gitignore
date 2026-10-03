@@ -18,4 +18,16 @@ campus-presence/android/.gradle/
 campus-presence/android/build/
 campus-presence/android/app/build/
 campus-presence/android/local.properties
+campus-presence/android/.idea/
+campus-presence/android/*.iml
+campus-presence/android/app/*.iml
+
+# the legacy android/ app (pairs with backend/)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/app/*.iml
 *.log

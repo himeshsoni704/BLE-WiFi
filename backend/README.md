@@ -9,8 +9,12 @@ score** for the "handed my phone to a friend" problem.
 > phones left behind, which is most real proxying.
 
 This directory is the **backend**: fusion rules, owner model, token validation,
-FastAPI service, and a simulator. The Android app, dashboards and ESP32 firmware
-are not built yet; the API contract they must follow is below.
+FastAPI service, and a simulator. The Android app for it is in [`../android`](../android).
+Dashboards and ESP32 firmware are not built; the API contract they must follow is below.
+
+> This is the separate **gait / handed-phone** project. It is not the backend the dashboard
+> in `../campus-presence` reads from, and its protocol (tokens, auth, endpoints) is not
+> compatible with it. For the dashboard demo use `../campus-presence`; see the top-level README.
 
 ## How a verdict is made
 
@@ -134,7 +138,7 @@ pipeline works and say nothing about real accuracy:
 
 ## Not built yet
 
-Android app (student + scanner foreground service), the two dashboards, ESP32
+The two dashboards, ESP32
 swap-in, class-session start/stop (attendance takes explicit `start`/`end` for now),
 per-scanner RSSI calibration UI (`min_rssi` is settable), and a relay-attack defence
 (a token can be relayed live within its window).

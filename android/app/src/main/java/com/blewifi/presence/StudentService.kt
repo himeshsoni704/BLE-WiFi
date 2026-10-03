@@ -52,6 +52,10 @@ class StudentService : Service() {
     private lateinit var api: Api
     private lateinit var thread: HandlerThread
     private lateinit var handler: Handler
+    // Sensor callbacks are delivered on the looper they were registered with. sendReport() blocks `handler`'s
+    // thread while it samples, so the listener needs a looper of its own or it would never be called.
+    private lateinit var sensorThread: HandlerThread
+    private lateinit var sensorHandler: Handler
     private var advertiser: BluetoothLeAdvertiser? = null
     private var advCallback: AdvertiseCallback? = null
     private var advWindow = Long.MIN_VALUE
@@ -88,6 +92,8 @@ class StudentService : Service() {
         api = Api(settings)
         thread = HandlerThread("student-svc").also { it.start() }
         handler = Handler(thread.looper)
+        sensorThread = HandlerThread("student-sensors").also { it.start() }
+        sensorHandler = Handler(sensorThread.looper)
         val f = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_USER_PRESENT)
@@ -190,8 +196,8 @@ class StudentService : Service() {
         var elapsed = SAMPLE_MS / 1000.0
         if (acc != null && gyr != null) {
             val t0 = SystemClock.elapsedRealtime()
-            sm.registerListener(l, acc, 20_000, handler)   // ~50 Hz
-            sm.registerListener(l, gyr, 20_000, handler)
+            sm.registerListener(l, acc, 20_000, sensorHandler)   // ~50 Hz
+            sm.registerListener(l, gyr, 20_000, sensorHandler)
             Thread.sleep(SAMPLE_MS)
             sm.unregisterListener(l)
             elapsed = (SystemClock.elapsedRealtime() - t0) / 1000.0
@@ -231,6 +237,7 @@ class StudentService : Service() {
         advCallback?.let { runCatching { advertiser?.stopAdvertising(it) } }
         runCatching { unregisterReceiver(screenReceiver) }
         thread.quitSafely()
+        sensorThread.quitSafely()
         lastStatus = "stopped"
         super.onDestroy()
     }

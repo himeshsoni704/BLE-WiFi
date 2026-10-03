@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader } from "../components/Layout";
 import { Card } from "../components/Card";
 import { StateBadge, SourceBadge } from "../components/Badge";
+import { NEUTRAL_COLOR, STATE_COLOR, TOOLTIP_STYLE } from "../theme";
 import { api } from "../services/api";
 import type { EvidenceDetail, StudentRow } from "../types/api";
 
-const STATE_HEX: Record<string, string> = {
-  PRESENT: "#34d399",
-  LIKELY_PRESENT: "#5b8cff",
-  REVIEW_REQUIRED: "#fbbf24",
-  ABSENT: "#f87171",
-};
 
+/** The header search links here with ?student=<id>; the route remounts this page when that id changes. */
 export function EvidenceExplorer() {
   const [students, setStudents] = useState<StudentRow[]>([]);
-  const [studentId, setStudentId] = useState<string>("");
+  const [params] = useSearchParams();
+  const [studentId, setStudentId] = useState<string>(params.get("student") ?? "");
   const [detail, setDetail] = useState<EvidenceDetail | null>(null);
   const [sessionIdx, setSessionIdx] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -92,12 +90,12 @@ export function EvidenceExplorer() {
                   <XAxis dataKey="label" stroke="var(--text-faint)" fontSize={11} tickLine={false} />
                   <YAxis domain={[0, 100]} stroke="var(--text-faint)" fontSize={11} tickLine={false} unit="%" />
                   <Tooltip
-                    contentStyle={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                    contentStyle={TOOLTIP_STYLE}
                     labelStyle={{ color: "var(--text)" }}
                   />
-                  <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+                  <Bar dataKey="score" radius={[8, 8, 0, 0]}>
                     {chartData.map((d, i) => (
-                      <Cell key={i} fill={STATE_HEX[d.state] ?? "#8d97ab"} />
+                      <Cell key={i} fill={STATE_COLOR[d.state as keyof typeof STATE_COLOR] ?? NEUTRAL_COLOR} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -172,6 +170,15 @@ export function EvidenceExplorer() {
                   <span style={{ color: "var(--text-dim)" }}>Signal families</span>
                   <span style={{ color: "var(--text)" }}>{session.evidence.independent_signal_families?.count ?? 0}</span>
                 </div>
+                {(session.evidence.limiting_factors?.length ?? 0) > 0 && (
+                  <div className="mt-2 px-3 py-2.5 text-xs leading-relaxed"
+                       style={{ background: "var(--amber-soft)", color: "var(--amber)", borderRadius: "var(--radius-sm)" }}>
+                    <div className="mb-1 font-semibold">Why this is not Present</div>
+                    <ul className="list-disc pl-4">
+                      {session.evidence.limiting_factors?.map((f) => <li key={f}>{f}</li>)}
+                    </ul>
+                  </div>
+                )}
                 {session.evidence.isolation_forest?.evaluated && (
                   <div className="mt-1 flex items-center justify-between text-xs">
                     <span style={{ color: "var(--text-dim)" }}>Isolation Forest</span>

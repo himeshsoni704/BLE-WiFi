@@ -3,7 +3,8 @@ import { PageHeader } from "../components/Layout";
 import { Card } from "../components/Card";
 import { SeverityBadge } from "../components/Badge";
 import { api } from "../services/api";
-import type { AnomalyRow, RetrievedCase } from "../types/api";
+import { ExplanationPanel } from "../components/ExplanationPanel";
+import type { AnomalyRow, ExplainResponse } from "../types/api";
 
 const STATUS_TABS = [
   { value: "open", label: "Open" },
@@ -12,21 +13,12 @@ const STATUS_TABS = [
   { value: "", label: "All" },
 ];
 
-interface ExplainState {
-  text: string;
-  cases: RetrievedCase[];
-  provider: string;
-  configured: string;
-  fallbackReason: string | null;
-  groundingPassed: boolean;
-}
-
 export function Anomalies() {
   const [status, setStatus] = useState("open");
   const [anomalies, setAnomalies] = useState<AnomalyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
-  const [explanations, setExplanations] = useState<Record<number, ExplainState>>({});
+  const [explanations, setExplanations] = useState<Record<number, ExplainResponse>>({});
   const [comments, setComments] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -48,14 +40,7 @@ export function Anomalies() {
     setBusy(id);
     try {
       const res = await api.explainAnomaly(id);
-      setExplanations((prev) => ({
-        ...prev,
-        [id]: {
-          text: res.explanation.text, cases: res.similar_cases, provider: res.provider.used,
-          configured: res.provider.configured, fallbackReason: res.explanation.fallback_reason,
-          groundingPassed: res.explanation.grounding.passed,
-        },
-      }));
+      setExplanations((prev) => ({ ...prev, [id]: res }));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -180,21 +165,7 @@ export function Anomalies() {
                 />
               )}
 
-              {exp && (
-                <div className="mt-3 rounded-lg border-l-2 px-3 py-2 text-xs leading-relaxed" style={{ borderColor: "var(--accent)", background: "var(--bg-elevated)", color: "var(--text-dim)" }}>
-                  {exp.text}
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--text-faint)" }}>
-                    <span>via {exp.provider}{exp.provider !== exp.configured ? ` (configured: ${exp.configured})` : ""}</span>
-                    {!exp.groundingPassed && <span style={{ color: "var(--amber)" }}>fell back after an ungrounded response</span>}
-                    {exp.fallbackReason && <span title={exp.fallbackReason}>· fallback</span>}
-                  </div>
-                  {exp.cases.length > 0 && (
-                    <div className="mt-1 text-xs" style={{ color: "var(--text-faint)" }}>
-                      Similar past cases: {exp.cases.map((c) => `${c.title} — ${c.resolution.replace(/_/g, " ")} (${(c.similarity * 100).toFixed(0)}%)`).join("; ")}
-                    </div>
-                  )}
-                </div>
-              )}
+              {exp && <ExplanationPanel res={exp} />}
             </Card>
           );
         })}

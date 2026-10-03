@@ -80,6 +80,8 @@ export interface LocationsResponse {
   at: number;
   age_s: number;
   window_s: number;
+  /** Instant each source's window ends at: live and simulated data are anchored separately. */
+  anchors: Partial<Record<"live" | "simulated", number>>;
   students: LocationStudent[];
   per_zone: Record<string, number>;
   access_points: AccessPointRow[];
@@ -140,6 +142,8 @@ export interface EvidenceSnapshot {
   independent_signal_families: { count: number; ble: boolean; wifi: boolean; face: boolean; rfid: boolean };
   has_evidence: boolean;
   state_capped_for_single_family: boolean;
+  /** Plain-language reasons the score is below PRESENT; absent on evidence stored before this field existed. */
+  limiting_factors?: string[];
   isolation_forest?: { evaluated: boolean; reason?: string; raw_score?: number; flagged?: boolean; risk_demo_0_100?: number };
   rules?: { rule: string; severity: string; detail: string; data: Record<string, unknown> }[];
 }
@@ -225,6 +229,24 @@ export interface AnomalyDetail extends AnomalyRow {
   feedback: AnomalyFeedbackEntry[];
 }
 
+export interface Hypothesis {
+  cause: string;
+  likelihood: "more likely" | "possible" | "unlikely";
+  because: string;
+  /** Names of the evidence fields this cause rests on. */
+  evidence: string[];
+  /** Ids of the knowledge passages / similar cases that support it, e.g. KB-RULE-TOKEN, CASE-3. */
+  sources: string[];
+}
+
+export interface SourceRef {
+  id: string;
+  kind: "knowledge" | "similar_case";
+  title: string;
+  text: string;
+  resolution?: string;
+}
+
 export interface ExplanationDto {
   text: string;
   key_points: string[];
@@ -232,9 +254,55 @@ export interface ExplanationDto {
   provider: "gemini" | "mock";
   model: string | null;
   grounding: { checked: boolean; passed: boolean; unverified_terms: string[] };
+  validation: { checked: boolean; passed: boolean; problems: string[] };
   fallback_reason: string | null;
   rejected_text: string | null;
   used_case_ids: number[];
+  hypotheses: Hypothesis[];
+  checks: string[];
+  used_kb_ids: string[];
+  sources: SourceRef[];
+}
+
+export interface AttributionFeature {
+  feature: string;
+  label: string;
+  unit: string;
+  meaning: string;
+  value: number;
+  typical: number;
+  value_note: string | null;
+  typical_note: string | null;
+  typical_range: [number, number];
+  outside_typical_range: boolean;
+  /** Positive = pushed the Isolation Forest score toward "unusual". */
+  contribution: number;
+  share_pct: number;
+  direction: "more_unusual" | "more_typical" | "neutral";
+}
+
+export type Attribution =
+  | { available: false; reason: string }
+  | {
+      available: true;
+      method: string;
+      score: number;
+      baseline_score: number;
+      flag_threshold: number;
+      flagged: boolean;
+      features: AttributionFeature[];
+      top: AttributionFeature[];
+      would_stop_being_flagged_if_typical: { features: string[]; score_after: number } | null;
+      caveat: string;
+    };
+
+export interface KnowledgePassage {
+  id: string;
+  title: string;
+  text: string;
+  tags: string[];
+  score: number;
+  matched_tags: string[];
 }
 
 export interface RetrievedCase {
@@ -253,6 +321,8 @@ export interface ExplainResponse {
   source: Source;
   evidence: Record<string, unknown>;
   similar_cases: RetrievedCase[];
+  knowledge: KnowledgePassage[];
+  attribution: Attribution;
   explanation: ExplanationDto;
   provider: { configured: string; used: string; model: string | null; note: string | null; fallback_reason: string | null };
   disclaimer: string;

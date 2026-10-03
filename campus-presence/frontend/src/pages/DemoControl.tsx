@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "../components/Layout";
 import { Card, StatCard } from "../components/Card";
 import { api } from "../services/api";
-import type { DemoScenario, SimulationFullSummary, SimulationStartResponse, SimulationStatus } from "../types/api";
+import type { Classroom, DemoScenario, SimulationFullSummary, SimulationStartResponse, SimulationStatus } from "../types/api";
 
 const SCENARIOS: { kind: DemoScenario; label: string; description: string }[] = [
   { kind: "proxy", label: "Proxy Attendance", description: "A student's token is read by two classroom markers in a time window too short for one person to walk between them." },
@@ -22,8 +22,32 @@ export function DemoControl() {
   const [log, setLog] = useState<{ kind: string; result: SimulationStartResponse; ts: number }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [rooms, setRooms] = useState<Classroom[]>([]);
+  const [liveRoom, setLiveRoom] = useState("204");
+  const [startingLive, setStartingLive] = useState(false);
+  const [liveResult, setLiveResult] = useState<string | null>(null);
 
   const refreshStatus = () => api.simulationStatus().then(setStatus).catch(() => {});
+
+  useEffect(() => {
+    api.listClassrooms().then((rs) => setRooms(rs.filter((r) => r.marker))).catch(() => {});
+  }, []);
+
+  const startLiveSession = async () => {
+    setStartingLive(true);
+    setError(null);
+    setLiveResult(null);
+    try {
+      const t = new Date();
+      const code = `LIVE${String(t.getHours()).padStart(2, "0")}${String(t.getMinutes()).padStart(2, "0")}`;
+      const r = await api.createSession(code, `${code} (live demo)`, liveRoom, 60);
+      setLiveResult(`Session ${r.code} started in Room ${r.room} for 60 minutes; ${r.enrolled_live_students} live students enrolled. Start the phones now.`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setStartingLive(false);
+    }
+  };
 
   useEffect(() => {
     refreshStatus();
@@ -91,7 +115,8 @@ export function DemoControl() {
       >
         Everything on this page generates or injects <strong>SIMULATED</strong> data, clearly tagged as such
         everywhere it surfaces (map, attendance, anomalies). It never represents a real device or a real student's
-        location.
+        location. The one exception is the <em>Live demo with real phones</em> card at the bottom, which only creates
+        an empty session for real phones to check into.
       </div>
 
       {error && (
@@ -183,6 +208,44 @@ export function DemoControl() {
             </button>
           ))}
         </div>
+      </Card>
+
+      <Card className="mb-5">
+        <h2 className="mb-3 text-sm font-semibold" style={{ color: "var(--text)" }}>
+          Live demo with real phones
+        </h2>
+        <p className="mb-3 text-xs leading-relaxed" style={{ color: "var(--text-faint)" }}>
+          A student only reaches PRESENT when their Bluetooth evidence covers a fair share of the time since the session
+          began, so start a fresh session just before the phones. Creates a LIVE session (not simulated) and enrolls the
+          live student accounts. It does not touch simulated data.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-xs" style={{ color: "var(--text-faint)" }}>
+            Room
+            <select
+              value={liveRoom}
+              onChange={(e) => setLiveRoom(e.target.value)}
+              className="rounded-lg border px-2 py-1 text-sm outline-none"
+              style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text)" }}
+            >
+              {rooms.length === 0 && <option value="204">Room 204</option>}
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            disabled={startingLive}
+            onClick={startLiveSession}
+            className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+            style={{ background: "var(--accent)", color: "#fff" }}
+          >
+            {startingLive ? "Starting…" : "Start a fresh live session (60 min)"}
+          </button>
+        </div>
+        {liveResult && (
+          <div className="mt-3 text-xs" style={{ color: "var(--green)" }}>{liveResult}</div>
+        )}
       </Card>
 
       <Card>

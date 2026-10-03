@@ -15,27 +15,37 @@ REST + WebSocket API in `app/main.py` and `app/routers/*.py`.
 - **Feedback** — history of faculty decisions and the verified-case knowledge base RAG retrieves from (`GET /feedback/summary`).
 - **Demo Control** — one-click simulation seeding (background job with progress polling) and scenario injection for live demos (`POST /simulation/start`, `/simulation/status`, `/simulation/reset`). Everything here is clearly tagged SIMULATED and never touches live device data.
 
-## Development
+## Run it
+
+The dashboard has no mock data layer: it talks to the real API, so start the backend first
+(from `../backend`, with its requirements installed):
+
+```bash
+uvicorn app.main:create_app --factory --host 0.0.0.0
+```
+
+The first start trains the Wi-Fi and Isolation Forest models from synthetic data if
+`../ml/models/*.joblib` don't exist yet (about 30 s); later starts take a few seconds.
+
+**Single process (best for a demo).** Build once and the backend serves the app itself:
 
 ```bash
 npm install
-npm run dev      # dev server on :5173, proxies /api and /ws to http://127.0.0.1:8000
-npm run build    # type-checks (tsc -b) then builds to dist/
+npm run build        # type-checks (tsc -b), then builds to dist/
 ```
 
-Run the backend separately before starting the dev server — the dashboard has
-no mock data layer, it talks to the real API. From `../backend`, with the
-repo root and `../ml` on `PYTHONPATH` (see `../backend/tests/conftest.py` for
-why):
+Open <http://localhost:8000/ui/> (`/` redirects there). Rebuild after changing the UI. Deep links
+and refreshes work (`/ui/attendance`).
+
+**Dev server with hot reload.**
 
 ```bash
-PYTHONPATH=../..:..:../../ml uvicorn app.main:create_app --factory
+npm run dev          # http://localhost:5173, proxies /api and /ws to http://127.0.0.1:8000
 ```
 
-The first run auto-trains the Wi-Fi and Isolation Forest models from
-synthetic data if `../ml/models/*.joblib` don't exist yet (a few seconds to
-about a minute).
+A built app calls the backend on its own origin; a dev server goes through the `/api` proxy. To point a
+build at a backend on another origin, set `VITE_API_BASE` (for example `VITE_API_BASE=http://pc:8000 npm run build`;
+the backend's `CORS_ORIGINS` must then allow the page's origin).
 
-Auth is a real JWT (`POST /auth/login`, stored in `localStorage`), not an API
-key — there is no `VITE_API_KEY` to set. The WebSocket URL appends the token
-as `?token=`.
+Auth is a real JWT (`POST /auth/login`, stored in `localStorage`), not an API key, so there is no `VITE_API_KEY` to set.
+The WebSocket URL appends the token as `?token=`.

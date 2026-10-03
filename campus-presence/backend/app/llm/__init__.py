@@ -26,21 +26,27 @@ def get_provider(settings, client=None) -> tuple[LLMProvider, str | None]:
     return MockLLMProvider(), None
 
 
-async def explain_with_fallback(primary: LLMProvider, evidence: dict, cases: list[dict]) -> Explanation:
-    """Try `primary`; on failure or an ungrounded answer use the deterministic mock explainer."""
+async def explain_with_fallback(primary: LLMProvider, evidence: dict, cases: list[dict],
+                                knowledge: list[dict] | None = None) -> Explanation:
+    """Try `primary`; on failure, an ungrounded answer, or a failed citation check, use the deterministic explainer."""
     mock = MockLLMProvider()
     if primary.name == "mock":
-        return await mock.explain(evidence, cases)
+        return await mock.explain(evidence, cases, knowledge)
     try:
-        exp = await primary.explain(evidence, cases)
+        exp = await primary.explain(evidence, cases, knowledge)
     except LLMUnavailable as exc:
-        fb = await mock.explain(evidence, cases)
+        fb = await mock.explain(evidence, cases, knowledge)
         fb.fallback_reason = str(exc)
         return fb
+    reasons = []
     if not exp.grounding.get("passed", False):
-        fb = await mock.explain(evidence, cases)
-        fb.fallback_reason = ("Gemini output mentioned values not present in the evidence "
-                              f"({', '.join(exp.grounding['unverified_terms'])}); it was rejected")
+        reasons.append("Gemini output mentioned values not present in the evidence "
+                       f"({', '.join(exp.grounding['unverified_terms'])})")
+    if not exp.validation.get("passed", True):
+        reasons.append("its reasoning failed the citation checks (" + "; ".join(exp.validation["problems"][:3]) + ")")
+    if reasons:
+        fb = await mock.explain(evidence, cases, knowledge)
+        fb.fallback_reason = " and ".join(reasons) + "; it was rejected"
         fb.rejected_text = exp.text
         return fb
     return exp

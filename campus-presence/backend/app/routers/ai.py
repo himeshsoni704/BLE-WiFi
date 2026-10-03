@@ -16,6 +16,7 @@ from simulation import campus
 from ..core import Services
 from ..db import session_scope
 from ..deps import get_db, get_svc
+from .. import xai
 from ..llm import MockLLMProvider, evidence_view, explain_with_fallback
 from ..models import Anomaly, Attendance, Feedback, SessionRow, Student, VerifiedCase
 from ..rag import tags_from_snapshot
@@ -39,11 +40,19 @@ def prepare(svc: Services, anomaly_id: int) -> dict:
         snap = json.loads(a.evidence_json or "{}")
         rules = json.loads(a.rules_json or "[]")
         label = st.student_id if svc.settings.gemini_send_real_ids else f"S-{st.student_key[:8]}"
+        # Why the forest scored this record as unusual. Only meaningful if the forest actually evaluated it.
+        if a.if_raw_score is None:
+            attribution = xai.unavailable("the Isolation Forest did not evaluate this record: " + str(
+                (snap.get("isolation_forest") or {}).get("reason") or "not evaluated"))
+        else:
+            attribution = xai.attribute(svc.anomaly, json.loads(a.features_json or "{}"))
         view = evidence_view(snap, student_label=label, expected_room=s.classroom_id, session_code=s.code,
                              state=snap.get("state", ""), risk_demo=a.risk_demo, if_raw=a.if_raw_score,
-                             if_flag=a.if_flag, rules=rules)
+                             if_flag=a.if_flag, rules=rules, attribution=attribution)
         tags = tags_from_snapshot({**snap, "rules": rules}, _zone_distance)
-        return {"view": view, "tags": tags, "snapshot": snap, "rules": rules, "room": s.classroom_id,
+        if attribution.get("available"):
+            tags = sorted({*tags, *(f"feat_{d['feature']}" for d in attribution["top"] if d["share_pct"] >= 15)})
+        return {"view": view, "tags": tags, "attribution": attribution, "snapshot": snap, "rules": rules, "room": s.classroom_id,
                 "session_code": s.code, "if_raw": a.if_raw_score, "if_flag": a.if_flag, "risk": a.risk_demo,
                 "status": a.status, "source": "SIMULATED" if a.is_simulated else "LIVE"}
 
@@ -74,13 +83,14 @@ async def explain_anomaly(body: ExplainIn, request: Request, who: Principal = De
     svc: Services = request.app.state.svc
     p = await run_in_threadpool(prepare, svc, body.anomaly_id)
     cases = svc.rag.retrieve(p["tags"], k=3)
+    knowledge = svc.kb.retrieve(p["tags"], k=4) if svc.kb else []
     primary = svc.llm
     if body.provider == "mock":
         primary = MockLLMProvider()
     elif body.provider == "gemini" and svc.llm.name != "gemini":
         raise HTTPException(409, getattr(svc, "llm_note", None) or "Gemini is not configured "
                             "(set LLM_PROVIDER=gemini, GEMINI_API_KEY and GEMINI_MODEL)")
-    exp = await explain_with_fallback(primary, p["view"], cases)
+    exp = await explain_with_fallback(primary, p["view"], cases, knowledge)
     payload = exp.to_dict()
 
     def store() -> None:
@@ -91,7 +101,7 @@ async def explain_anomaly(body: ExplainIn, request: Request, who: Principal = De
             a.explanation_ts = time.time()
     await run_in_threadpool(store)
     return {"anomaly_id": body.anomaly_id, "source": p["source"], "evidence": evidence_panel(p),
-            "similar_cases": cases, "explanation": payload,
+            "similar_cases": cases, "knowledge": knowledge, "attribution": p["attribution"], "explanation": payload,
             "provider": {"configured": svc.llm.name, "used": payload["provider"], "model": payload.get("model"),
                          "note": getattr(svc, "llm_note", None), "fallback_reason": payload.get("fallback_reason")},
             "disclaimer": ("The LLM explains the system's structured evidence. It does not decide attendance, "
@@ -109,7 +119,8 @@ def rag_retrieve(body: RagQueryIn, request: Request, who: Principal = Depends(st
         p = prepare(svc, body.anomaly_id)
         tags = p["tags"]
     return {"tags_used": tags, "index_size": svc.rag.size(), "method": "TF-IDF cosine over tags + narrative (lexical, not semantic)",
-            "cases": svc.rag.retrieve(tags, text, k=body.k)}
+            "cases": svc.rag.retrieve(tags, text, k=body.k),
+            "knowledge": svc.kb.retrieve(tags, text, k=body.k) if svc.kb else []}
 
 
 # ---- feedback ---------------------------------------------------------------------------------------

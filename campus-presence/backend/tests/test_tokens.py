@@ -68,6 +68,7 @@ def test_timestamp_window():
 
 
 def test_literal_vectors_to_port_to_kotlin_and_c():
+    # The Android app pins the same literals in android/app/src/test/.../core/TokensTest.kt: change both together.
     s = "000102030405060708090a0b0c0d0e0f"
     assert student_token(s, 0) == "8bdd878956cddb95"
     assert student_token(s, 1) == "16df7955866e124e"

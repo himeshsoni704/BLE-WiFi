@@ -5,7 +5,9 @@ import type {
   VerifiedCaseEntry,
 } from "../types/api";
 
-const BASE = "/api";
+// Dev: the Vite proxy maps /api to the backend. Built app: served by the backend itself, so same origin.
+// Set VITE_API_BASE to point a build at a backend on another origin.
+const BASE: string = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? "/api" : "");
 const TOKEN_KEY = "cp_token";
 
 let token: string | null = localStorage.getItem(TOKEN_KEY);
@@ -97,6 +99,10 @@ export const api = {
   feedbackSummary: () => request<FeedbackSummaryResponse>("/feedback/summary"),
 
   summary: (source: Source | "all" = "all") => request<SummaryResponse>(`/summary${qs({ source })}`),
+
+  createSession: (code: string, title: string, classroomId: string, minutes = 60) =>
+    request<{ id: number; code: string; room: string; start_ts: number; end_ts: number; enrolled_live_students: number }>(
+      "/sessions", { method: "POST", body: JSON.stringify({ code, title, classroom_id: classroomId, minutes }) }),
 
   simulationStart: (scenario: string, students = 300, seed = 1, wait = false) =>
     request<SimulationStartResponse>("/simulation/start", {

@@ -13,7 +13,9 @@ named in the "What I read" column. I did **not** read every file in every repo.
 * Repositories with **no licence file** are "all rights reserved" by default. They were
   read for ideas only, and nothing from them (code, data, images) is redistributed here.
 * Official Android APIs were preferred over third-party BLE/Wi-Fi libraries. The
-  Android app uses only AndroidX / platform APIs plus Retrofit/OkHttp.
+  Android app (`campus-presence/android`) uses only Android platform APIs (`android.bluetooth.le`,
+  `WifiManager`, `HttpURLConnection`, `org.json`) and has no AndroidX, Retrofit or OkHttp
+  dependency. Its tests use JUnit and the `org.json` reference implementation.
 
 ## Repositories
 

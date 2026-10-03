@@ -9,24 +9,24 @@
     },
     {
       "contamination": 0.05,
-      "precision": 0.7466666666666667,
-      "recall": 0.691358024691358,
-      "f1": 0.717948717948718,
-      "normal_sessions_flagged": 0.02786377708978328
+      "precision": 0.7948717948717948,
+      "recall": 0.7654320987654321,
+      "f1": 0.779874213836478,
+      "normal_sessions_flagged": 0.021671826625386997
     },
     {
       "contamination": 0.08,
-      "precision": 0.7053571428571429,
-      "recall": 0.9753086419753086,
-      "f1": 0.8186528497409327,
-      "normal_sessions_flagged": 0.058823529411764705
+      "precision": 0.719626168224299,
+      "recall": 0.9506172839506173,
+      "f1": 0.8191489361702128,
+      "normal_sessions_flagged": 0.05572755417956656
     },
     {
       "contamination": 0.12,
-      "precision": 0.6428571428571429,
+      "precision": 0.648,
       "recall": 1.0,
-      "f1": 0.782608695652174,
-      "normal_sessions_flagged": 0.09597523219814241
+      "f1": 0.7864077669902912,
+      "normal_sessions_flagged": 0.09287925696594428
     }
   ],
   "threshold_note": "`contamination` sets the flagging cut-off. It trades review load (normal sessions flagged) against recall; the default was chosen after looking at this synthetic split, so treat the reported recall as optimistic.",
@@ -34,11 +34,11 @@
   "n_train_unlabeled_contaminants": 23,
   "n_test": 420,
   "n_test_anomalies": 81,
-  "accuracy": 0.8952380952380953,
-  "precision": 0.7466666666666667,
-  "recall": 0.691358024691358,
-  "f1": 0.717948717948718,
-  "roc_auc_raw_score": 0.9630722167595324,
+  "accuracy": 0.9166666666666666,
+  "precision": 0.7948717948717948,
+  "recall": 0.7654320987654321,
+  "f1": 0.779874213836478,
+  "roc_auc_raw_score": 0.9641283367930369,
   "confusion_matrix": {
     "labels": [
       "normal",
@@ -46,12 +46,12 @@
     ],
     "matrix": [
       [
-        320,
-        19
+        323,
+        16
       ],
       [
-        25,
-        56
+        19,
+        62
       ]
     ],
     "note": "rows = true, columns = predicted (flagged by Isolation Forest)"
@@ -59,8 +59,8 @@
   "per_scenario": {
     "false_positive": {
       "n": 16,
-      "flagged_by_isolation_forest": 0.625,
-      "hit_by_deterministic_rules": 0.9375
+      "flagged_by_isolation_forest": 0.5625,
+      "hit_by_deterministic_rules": 0.8125
     },
     "impossible_movement": {
       "n": 13,
@@ -69,27 +69,27 @@
     },
     "normal": {
       "n": 323,
-      "flagged_by_isolation_forest": 0.02786377708978328,
-      "hit_by_deterministic_rules": 0.030959752321981424
+      "flagged_by_isolation_forest": 0.021671826625386997,
+      "hit_by_deterministic_rules": 0.04643962848297214
     },
     "proxy": {
       "n": 24,
-      "flagged_by_isolation_forest": 0.5416666666666666,
+      "flagged_by_isolation_forest": 0.625,
       "hit_by_deterministic_rules": 0.0
     },
     "short_presence": {
       "n": 16,
       "flagged_by_isolation_forest": 1.0,
-      "hit_by_deterministic_rules": 0.25
+      "hit_by_deterministic_rules": 0.1875
     },
     "token_replay": {
       "n": 13,
-      "flagged_by_isolation_forest": 0.5384615384615384,
+      "flagged_by_isolation_forest": 0.6923076923076923,
       "hit_by_deterministic_rules": 1.0
     },
     "wifi_ble_mismatch": {
       "n": 15,
-      "flagged_by_isolation_forest": 0.4666666666666667,
+      "flagged_by_isolation_forest": 0.6,
       "hit_by_deterministic_rules": 1.0
     }
   },
@@ -108,6 +108,17 @@
     "rssi_twin_distance"
   ],
   "contamination": 0.05,
+  "weak_features": [
+    {
+      "feature": "token_reuse_count",
+      "fraction_of_training_rows_that_differ": 0.0077
+    },
+    {
+      "feature": "session_switch_count",
+      "fraction_of_training_rows_that_differ": 0.009
+    }
+  ],
+  "weak_features_note": "These features almost never vary in the training data, so the forest is close to blind to them (it cannot isolate what it never saw differ). Detection of such patterns relies on the deterministic rules, not the forest. Measured on this synthetic data: token replay is caught by the forest in only some training splits, and always by the rules.",
   "data": "synthetic",
   "caveat": "Anomalies are patterns defined by this project's simulator, so recall here shows the forest can separate those patterns, not that it would catch real misconduct. 'false_positive' rows are benign-but-odd cases, counted as normal. Isolation Forest flags unusual combinations; it does not decide attendance."
 }

@@ -1,6 +1,11 @@
 # Android app (student + scanner)
 
-One app, two roles, talking to `../backend`. Pure platform APIs (no Retrofit/Compose).
+One app, two roles, talking to `../backend` (the gait / handed-phone backend). Pure platform APIs (no Retrofit/Compose).
+
+> **This app does not work with the Proof-of-Presence dashboard.** It speaks the `../backend` protocol (`X-API-Key`,
+> `/device-report`, `/scan/batch`, token prefix `ble-wifi/v1`). The dashboard's backend, `../campus-presence/backend`, uses
+> JWT logins and a different token format and BLE payload. For the dashboard use the app in
+> [`../campus-presence/android`](../campus-presence/android).
 
 | Role | Service | What it does |
 |---|---|---|

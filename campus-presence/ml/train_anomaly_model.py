@@ -34,6 +34,11 @@ def print_report(rep: dict) -> None:
     print("  threshold sweep (contamination -> precision / recall / normal sessions flagged):")
     for s in rep["threshold_sweep"]:
         print(f"    {s['contamination']:.2f}  P {s['precision']:.2f}  R {s['recall']:.2f}  flagged-normal {s['normal_sessions_flagged'] * 100:.1f}%")
+    if rep.get("weak_features"):
+        print("  features the forest is nearly blind to (they almost never vary in training):")
+        for w in rep["weak_features"]:
+            print(f"    {w['feature']:<24} differs from the median in {w['fraction_of_training_rows_that_differ'] * 100:.1f}% of training rows")
+        print(rep["weak_features_note"])
     print(rep["threshold_note"])
     print(rep["caveat"])
 

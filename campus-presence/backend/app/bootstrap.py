@@ -13,6 +13,7 @@ from .core import Services
 from .db import Base, make_engine, make_session_factory, session_scope
 from .llm import get_provider
 from .models import Location, Observation
+from .knowledge import KnowledgeBase
 from .rag import CaseIndex
 from .seed import ensure_live_session, seed_campus, seed_demo_accounts
 
@@ -31,11 +32,12 @@ def ensure_models(svc: Services, quick: bool = False) -> dict:
     s = svc.settings
     out = {}
     Path(s.model_dir).mkdir(parents=True, exist_ok=True)
+    Path(s.report_dir).mkdir(parents=True, exist_ok=True)
     if not Path(s.wifi_model_path).exists():
         log.warning("wifi_localization.joblib missing: training a synthetic one (a few seconds)")
         model, report = mltrain.train_wifi(200 if quick else 400, 80 if quick else 150)
         model.save(s.wifi_model_path)
-        mltrain.save_wifi_report(report, Path(s.model_dir))
+        mltrain.save_wifi_report(report, Path(s.report_dir))
         out["wifi"] = "trained"
     svc.load_models()
     if not Path(s.anomaly_model_path).exists():
@@ -44,7 +46,7 @@ def ensure_models(svc: Services, quick: bool = False) -> dict:
         rows = mltrain.build_anomaly_dataset(svc, n, seed=7, scenarios=mltrain.default_scenarios(n))
         model, report = mltrain.train_anomaly(rows)
         model.save(s.anomaly_model_path)
-        mltrain.save_anomaly_report(report, Path(s.model_dir))
+        mltrain.save_anomaly_report(report, Path(s.report_dir))
         out["anomaly"] = "trained"
         # the dataset run polluted the DB with simulated rows; wipe them
         from simulation.generator import CampusSim
@@ -72,5 +74,6 @@ def bootstrap(settings: Settings, clock=time.time, train_missing: bool = True, q
     svc.rag = CaseIndex(svc.SessionLocal)
     svc.rag.seed_if_empty()
     svc.rag.rebuild()
+    svc.kb = KnowledgeBase()
     svc.llm, svc.llm_note = get_provider(settings)
     return svc

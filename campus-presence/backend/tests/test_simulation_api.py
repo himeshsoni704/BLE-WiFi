@@ -158,3 +158,33 @@ def test_background_start_reports_progress(make_app):
             break
         time.sleep(0.5)
     assert s["last"] and s["progress"] == 1.0 and s["error"] is None
+
+
+def test_a_live_phone_does_not_hide_the_simulated_crowd_on_the_map(make_app, clock):
+    """/locations anchors each source to its own newest row. Anchoring `source=all` to the newest row overall let
+    one live observation (timestamped now) push the 15-minute window past every simulated row (a replayed day)."""
+    import uuid
+    from app.tokens import marker_token, window_index
+    c = TestClient(make_app())
+    fac = login(c, "faculty")
+    c.post("/simulation/start", json={"scenario": "full", "students": 60, "wait": True}, headers=fac)
+    before = c.get("/locations?source=all", headers=fac).json()
+    assert before["students"] and {s["source"] for s in before["students"]} == {"SIMULATED"}
+
+    node = c.get("/nodes/provision", headers={"X-Node-Key": "node-204-demo"}).json()
+    phone = login(c, "HIMESH")
+    item = {"kind": "marker", "marker_idx": node["marker_idx"], "rssi": -55, "timestamp": clock.t, "duration": 60,
+            "samples": 400, "nonce": uuid.uuid4().hex[:20],
+            "marker_token": marker_token(node["marker_secret"], node["marker_idx"], window_index(clock.t, 30))}
+    assert c.post("/ble-observation", json={"observations": [item]}, headers=phone).json()["accepted"] == 1
+
+    after = c.get("/locations?source=all", headers=fac).json()
+    by_source = {}
+    for s in after["students"]:
+        by_source.setdefault(s["source"], []).append(s)
+    assert [s["student_id"] for s in by_source["LIVE"]] == ["HIMESH"]
+    assert len(by_source["SIMULATED"]) == len(before["students"]), "simulated dots must survive a live observation"
+    assert set(after["anchors"]) == {"live", "simulated"} and after["anchors"]["live"] > after["anchors"]["simulated"]
+    # the single-source views are unchanged
+    assert {s["source"] for s in c.get("/locations?source=simulated", headers=fac).json()["students"]} == {"SIMULATED"}
+    assert [s["student_id"] for s in c.get("/locations?source=live", headers=fac).json()["students"]] == ["HIMESH"]

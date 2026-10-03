@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../services/api";
+import { BrandMark } from "../components/Icon";
 
 export function Login() {
   const { login } = useAuth();
@@ -31,13 +32,14 @@ export function Login() {
     <div className="flex min-h-screen items-center justify-center px-4" style={{ background: "var(--bg)" }}>
       <form
         onSubmit={submit}
-        className="w-full max-w-sm rounded-xl border p-6"
-        style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+        className="w-full max-w-sm p-7"
+        style={{ background: "var(--bg-card)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-card)" }}
       >
-        <div className="mb-1 text-lg font-semibold" style={{ color: "var(--text)" }}>
+        <div className="mb-3"><BrandMark size={40} /></div>
+        <div className="mb-1 text-xl font-bold" style={{ color: "#1e293b" }}>
           Proof-of-Presence
         </div>
-        <div className="mb-6 text-sm" style={{ color: "var(--text-faint)" }}>
+        <div className="mb-6 text-sm" style={{ color: "var(--text-dim)" }}>
           Authorized faculty/admin sign-in.
         </div>
 
@@ -48,7 +50,7 @@ export function Login() {
           autoFocus
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="mb-4 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+          className="mb-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
           style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text)" }}
         />
 
@@ -59,12 +61,12 @@ export function Login() {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="mb-5 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+          className="mb-5 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
           style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text)" }}
         />
 
         {error && (
-          <div className="mb-4 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--red)", color: "var(--red)" }}>
+          <div className="mb-4 rounded-xl px-3 py-2 text-xs" style={{ background: "var(--red-soft)", color: "var(--red)" }}>
             {error}
           </div>
         )}
@@ -72,14 +74,14 @@ export function Login() {
         <button
           type="submit"
           disabled={busy || !username || !password}
-          className="w-full rounded-lg py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: "var(--accent)", color: "#fff" }}
+          className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50"
+          style={{ background: "var(--accent)", color: "#ffffff" }}
         >
           {busy ? "Signing in…" : "Sign in"}
         </button>
 
         {demoMode && (
-          <div className="mt-5 rounded-lg border-l-2 px-3 py-2 text-xs leading-relaxed" style={{ borderColor: "var(--purple)", background: "var(--purple-soft)", color: "var(--text-dim)" }}>
+          <div className="mt-5 rounded-xl px-3 py-2.5 text-xs leading-relaxed" style={{ background: "var(--purple-soft)", color: "var(--purple)" }}>
             Demo mode is on: sign in as <strong>faculty</strong> or <strong>admin</strong>, password{" "}
             <strong>demo1234</strong>.
           </div>

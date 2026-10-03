@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // `npm run build` output is served by the backend under /ui/; the dev server runs at the root.
+  base: command === 'build' ? '/ui/' : '/',
   plugins: [react(), tailwindcss()],
   server: {
     host: true,
@@ -20,4 +22,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
