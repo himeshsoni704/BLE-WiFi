@@ -5,7 +5,9 @@ import type {
   VerifiedCaseEntry,
 } from "../types/api";
 
-const BASE = "/api";
+// Dev: the Vite proxy maps /api to the backend. Built app: served by the backend itself, so same origin.
+// Set VITE_API_BASE to point a build at a backend on another origin.
+const BASE: string = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? "/api" : "");
 const TOKEN_KEY = "cp_token";
 
 let token: string | null = localStorage.getItem(TOKEN_KEY);

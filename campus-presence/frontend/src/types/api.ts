@@ -80,6 +80,8 @@ export interface LocationsResponse {
   at: number;
   age_s: number;
   window_s: number;
+  /** Instant each source's window ends at: live and simulated data are anchored separately. */
+  anchors: Partial<Record<"live" | "simulated", number>>;
   students: LocationStudent[];
   per_zone: Record<string, number>;
   access_points: AccessPointRow[];

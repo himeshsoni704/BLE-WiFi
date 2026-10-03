@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .bootstrap import bootstrap
 from .config import ROOT, Settings
@@ -19,6 +20,19 @@ from .core import Services
 from .routers import ai, auth, data, ingest_routes, sim, ws
 
 log = logging.getLogger("campus")
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serves the built single-page app. A path without a file extension that isn't a file is a client-side
+    route (e.g. /ui/attendance), so it gets index.html and survives a browser refresh; a missing asset still 404s."""
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and not Path(path).suffix:
+                return await super().get_response("index.html", scope)
+            raise
 
 
 def create_app(settings: Settings | None = None, svc: Services | None = None, clock=time.time,
@@ -76,5 +90,5 @@ def create_app(settings: Settings | None = None, svc: Services | None = None, cl
 
     dist = ROOT / "frontend" / "dist"
     if dist.exists():
-        app.mount("/ui", StaticFiles(directory=dist, html=True), name="ui")
+        app.mount("/ui", SPAStaticFiles(directory=dist, html=True), name="ui")
     return app

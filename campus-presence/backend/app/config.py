@@ -57,6 +57,9 @@ class Settings:
     database_url: str = f"sqlite:///{BACKEND / 'data' / 'campus.db'}"
     model_dir: str = str(ROOT / "ml" / "models")
     data_dir: str = str(ROOT / "ml" / "data")
+    # Reports written by the automatic first-run training. Kept out of ml/models/, whose reports are tracked and
+    # are refreshed deliberately by the ml/*.py scripts, so starting the server never dirties the git tree.
+    report_dir: str = str(BACKEND / "data" / "reports")
     jwt_secret: str = ""
     jwt_ttl_s: int = 12 * 3600
     pepper: str = ""                     # server-side secret for hashed student keys
@@ -125,6 +128,7 @@ class Settings:
             database_url=_env("DATABASE_URL", cls.database_url),
             model_dir=_env("MODEL_DIR", cls.model_dir),
             data_dir=_env("ML_DATA_DIR", cls.data_dir),
+            report_dir=_env("REPORT_DIR", cls.report_dir),
             jwt_secret=persisted_secret(".jwt_secret", "JWT_SECRET"),
             pepper=persisted_secret(".pepper", "ID_PEPPER"),
             jwt_ttl_s=int(_env("JWT_TTL_S", str(cls.jwt_ttl_s))),

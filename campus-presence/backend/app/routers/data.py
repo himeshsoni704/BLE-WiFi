@@ -82,15 +82,9 @@ def classrooms(who: Principal = Depends(current_principal), db: Session = Depend
     return out
 
 
-@router.get("/locations")
-def locations(source: Source = "all", at: float | None = None, window_s: float = Query(900, ge=30, le=7200),
-              who: Principal = Depends(staff), db: Session = Depends(get_db), svc: Services = Depends(get_svc)) -> dict:
-    """Latest estimated zone per student. `signal` says where it came from: ble_marker is a verified classroom
-    marker detection; wifi is an ML estimate. `at` defaults to the newest location in the chosen source."""
-    base = select(func.max(Location.ts)).where(_sim_filter(Location.is_simulated, source))
-    at = at if at is not None else (db.scalar(base) or svc.clock())
+def _latest_per_student(db: Session, simulated: bool, at: float, window_s: float) -> list[tuple[Location, Student]]:
     rows = db.execute(select(Location, Student).join(Student, Student.student_key == Location.student_key)
-                      .where(Location.ts <= at, Location.ts >= at - window_s, _sim_filter(Location.is_simulated, source))
+                      .where(Location.ts <= at, Location.ts >= at - window_s, Location.is_simulated == simulated)
                       .order_by(Location.ts)).all()
     best: dict[str, tuple[Location, Student]] = {}
     for loc, st in rows:
@@ -100,16 +94,37 @@ def locations(source: Source = "all", at: float | None = None, window_s: float =
                 loc.signal == cur[0].signal and loc.ts >= cur[0].ts) or (
                 cur[0].signal == "ble_marker" and loc.signal == "wifi" and loc.ts - cur[0].ts > 120):
             best[loc.student_key] = (loc, st)
+    return list(best.values())
+
+
+@router.get("/locations")
+def locations(source: Source = "all", at: float | None = None, window_s: float = Query(900, ge=30, le=7200),
+              who: Principal = Depends(staff), db: Session = Depends(get_db), svc: Services = Depends(get_svc)) -> dict:
+    """Latest estimated zone per student. `signal` says where it came from: ble_marker is a verified classroom
+    marker detection; wifi is an ML estimate. Unless `at` is given, each source (live, simulated) is anchored to
+    its own newest location: simulated data is a replayed day with its own timestamps, so a single live phone
+    must not push its window past every simulated row. `anchors` reports the instant used per source."""
+    sources = [(name, name == "simulated") for name in ("live", "simulated") if source in ("all", name)]
+    anchors: dict[str, float] = {}
+    picked: list[tuple[Location, Student]] = []
+    for name, simulated in sources:
+        anchor = at if at is not None else db.scalar(
+            select(func.max(Location.ts)).where(Location.is_simulated == simulated))
+        if anchor is None:
+            continue
+        anchors[name] = anchor
+        picked += _latest_per_student(db, simulated, anchor, window_s)
+    at = at if at is not None else (max(anchors.values()) if anchors else svc.clock())
     students_out = [{"student_id": st.student_id, "student_key": st.student_key, "name": st.name,
                      "zone": loc.zone, "x": loc.x, "y": loc.y, "signal": loc.signal,
                      "estimate": "verified marker detection" if loc.signal == "ble_marker" else "ML estimate",
                      "confidence": loc.confidence, "ts": loc.ts, "source": _src(st.is_simulated)}
-                    for loc, st in best.values()]
+                    for loc, st in picked]
     zones = Counter(s["zone"] for s in students_out)
     aps = [{"ap_id": a.ap_id, "name": a.name, "x": a.x, "y": a.y, "bssid": a.bssid,
             "source": "SIMULATED" if a.is_simulated else "LIVE"} for a in db.scalars(select(AccessPoint))]
-    return {"at": at, "age_s": round(svc.clock() - at, 1), "window_s": window_s, "students": students_out,
-            "per_zone": dict(zones), "access_points": aps}
+    return {"at": at, "age_s": round(svc.clock() - at, 1), "window_s": window_s, "anchors": anchors,
+            "students": students_out, "per_zone": dict(zones), "access_points": aps}
 
 
 @router.get("/sessions")
