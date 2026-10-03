@@ -57,7 +57,7 @@ Sign in as `faculty` or `admin`, password `demo1234` (demo accounts exist while 
 ## Demo script (about 5 minutes, no phones)
 
 1. **Demo Control**: *Start Simulation* (about 16 s: 300 students, 60 sessions, 12 injected anomalies).
-2. **Dashboard**: attendance counts, open anomalies, recent cases.
+2. **Dashboard**: attendance KPIs, four charts (zones, per-session presence, outcome mix, trend) and recent cases. The header search jumps to a student's Evidence Explorer; the bell shows open anomalies.
 3. **Live Location**: about 237 students on the campus map, coloured by state. Click a dot for its evidence.
 4. **Anomalies**: *Explain* a case (rule hits, Isolation Forest score, similar verified cases), then *Confirm* or *False Positive*.
 5. **Demo Control** again: inject *Proxy Attendance* and watch a new anomaly arrive over the WebSocket.

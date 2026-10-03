@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { Login } from "./pages/Login";
@@ -15,13 +15,18 @@ function Gate({ children }: { children: React.ReactNode }) {
   if (!token) return <Login />;
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg)", color: "var(--text-faint)" }}>
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg)", color: "var(--text-dim)" }}>
         Loading…
       </div>
     );
   }
   if (!me) return <Login />;
   return <Layout>{children}</Layout>;
+}
+
+function EvidenceRoute() {
+  const [params] = useSearchParams();
+  return <EvidenceExplorer key={params.get("student") ?? ""} />;
 }
 
 function Routed() {
@@ -32,7 +37,7 @@ function Routed() {
         <Route path="/map" element={<LiveLocation />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/anomalies" element={<Anomalies />} />
-        <Route path="/evidence" element={<EvidenceExplorer />} />
+        <Route path="/evidence" element={<EvidenceRoute />} />
         <Route path="/feedback" element={<Feedback />} />
         <Route path="/demo" element={<DemoControl />} />
         <Route path="*" element={<Navigate to="/" replace />} />

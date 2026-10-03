@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { NEUTRAL_COLOR, STATE_COLOR } from "../theme";
 import type { AttendanceState, Classroom, LocationStudent } from "../types/api";
 
 const ROOM_W = 10;
@@ -7,13 +8,7 @@ const CORRIDOR_W = 96;
 const CORRIDOR_H = 3;
 const PADDING = 6;
 
-const STATE_COLOR: Record<AttendanceState, string> = {
-  PRESENT: "#34d399",
-  LIKELY_PRESENT: "#5b8cff",
-  REVIEW_REQUIRED: "#fbbf24",
-  ABSENT: "#f87171",
-};
-const SIGNAL_COLOR = "#8d97ab";
+const SIGNAL_COLOR = NEUTRAL_COLOR;
 
 export type MapStudent = LocationStudent & { state?: AttendanceState };
 

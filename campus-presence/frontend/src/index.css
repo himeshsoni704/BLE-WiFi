@@ -1,24 +1,40 @@
 @import "tailwindcss";
 
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 :root {
-  --bg: #0a0e17;
-  --bg-elevated: #10151f;
-  --bg-card: #141a26;
-  --border: #212a3a;
-  --border-soft: #1a2130;
-  --text: #e6eaf2;
-  --text-dim: #8d97ab;
-  --text-faint: #5b6478;
-  --accent: #5b8cff;
-  --accent-soft: #5b8cff22;
-  --green: #34d399;
-  --green-soft: #34d39922;
-  --amber: #fbbf24;
-  --amber-soft: #fbbf2422;
-  --red: #f87171;
-  --red-soft: #f8717122;
-  --purple: #a78bfa;
-  --purple-soft: #a78bfa22;
+  /* Soft pastel SaaS palette. Pastel fills carry a darker text colour from the same hue family. */
+  --bg: #e8f7f2;
+  --bg-elevated: #f5f7fa;
+  --bg-card: #ffffff;
+  --border: #dfeae6;
+  --border-soft: #edf3f1;
+  --text: #1e293b;
+  --text-dim: #64748b;
+  --text-faint: #7c8aa0;
+  --accent: #0088cc;
+  --accent-soft: #e1f0fa;
+  --accent-ink: #2b5876;
+  --green: #2e7d52;
+  --green-soft: #e4f8ec;
+  --amber: #7a6218;
+  --amber-soft: #fef6d8;
+  --red: #b4432f;
+  --red-soft: #fde8d7;
+  --purple: #6b3a78;
+  --purple-soft: #f4e8f8;
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.04);
+  --radius-lg: 20px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+  --font: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 * {
@@ -33,7 +49,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font);
   -webkit-font-smoothing: antialiased;
 }
 
