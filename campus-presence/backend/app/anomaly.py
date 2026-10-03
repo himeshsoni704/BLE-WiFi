@@ -97,6 +97,10 @@ class AnomalyModel:
             out.append(AnomalyScore(float(r), float(d), bool(d < 0), round(risk, 1)))
         return out
 
+    @property
+    def has_reference(self) -> bool:
+        return bool(self.stats.get("baseline")) and bool(self.stats.get("ranges"))
+
     def save(self, path: str | Path) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         joblib.dump({"model": self.model, "stats": self.stats, "features": FEATURES,
@@ -118,4 +122,23 @@ def train_isolation_forest(rows: Sequence[dict[str, float]], contamination: floa
     s = model.score_samples(X)
     stats = {"median": float(np.median(s)), "p01": float(np.percentile(s, 1)), "min": float(s.min()),
              "offset": float(model.offset_), "n_train": int(len(X)), "contamination": contamination}
+    stats.update(feature_reference(X))
     return AnomalyModel(model, stats, MODEL_VERSION, meta)
+
+
+def weak_features(X: np.ndarray, min_fraction: float = 0.02) -> list[dict]:
+    """Features that (almost) never differ from the training median. An Isolation Forest can only split on a feature
+    that varies in its training data, so it is close to blind to these however extreme a live value is. The
+    deterministic rules in rules.py are what cover them (e.g. token_reuse_count)."""
+    med = np.median(X, axis=0)
+    frac = (np.abs(X - med) > 1e-6).mean(axis=0)
+    return [{"feature": f, "fraction_of_training_rows_that_differ": round(float(v), 4)}
+            for f, v in zip(FEATURES, frac) if v < min_fraction]
+
+
+def feature_reference(X: np.ndarray) -> dict:
+    """What 'typical' means for each feature: the training median (the baseline for attribution, see xai.py)
+    and the 5th-95th percentile range (to say whether a value is unusual on its own)."""
+    return {"baseline": {f: float(v) for f, v in zip(FEATURES, np.median(X, axis=0))},
+            "ranges": {f: [float(a), float(b)] for f, a, b in
+                       zip(FEATURES, np.percentile(X, 5, axis=0), np.percentile(X, 95, axis=0))}}

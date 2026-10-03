@@ -18,7 +18,7 @@ from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score, precisi
 
 from simulation import campus
 
-from .anomaly import FEATURES, AnomalyModel, train_isolation_forest
+from .anomaly import FEATURES, AnomalyModel, to_matrix, train_isolation_forest, weak_features
 from .wifi import WifiLocalizer, train_localizer
 
 
@@ -183,17 +183,15 @@ def read_feature_csv(path: Path) -> list[dict]:
     return rows
 
 
-def train_anomaly(rows: list[dict], seed: int = 0, contamination: float = 0.05,
-                  extra_normal: list[dict] | None = None, train_anomaly_fraction: float = 0.03
-                  ) -> tuple[AnomalyModel, dict]:
-    """Train on mostly-normal rows, evaluate on a held-out split containing every anomaly type.
+def split_rows(rows: list[dict], seed: int = 0, train_anomaly_fraction: float = 0.03,
+               extra_normal: list[dict] | None = None) -> dict:
+    """The train/test split train_anomaly uses, exposed so evaluations (ml/audit_models.py) use exactly the same one.
 
-    Isolation Forest is unsupervised and can only split on features that vary in its training data.
-    A purely clean training set would make e.g. `token_reuse_count` constant (always 0), and the forest
-    could never isolate a replay. So, like real operational data, the training set is *mostly normal
-    with a small unlabeled contamination* (`train_anomaly_fraction` of rows, drawn from whole anomalous
-    sessions that are then excluded from the test set). `extra_normal` are faculty-confirmed false positives.
-    """
+    Isolation Forest is unsupervised and can only split on features that vary in its training data. A purely clean
+    training set would make e.g. `token_reuse_count` constant (always 0), and the forest could never isolate a replay.
+    So, like real operational data, the training set is *mostly normal with a small unlabeled contamination*
+    (`train_anomaly_fraction` of rows, drawn from whole anomalous sessions that are then excluded from the test set).
+    `extra_normal` are faculty-confirmed false positives."""
     rng = np.random.default_rng(seed)
     normal = [r for r in rows if r["label"] == "normal"]
     hard_neg = [r for r in rows if r["label"] == "false_positive"]
@@ -213,13 +211,24 @@ def train_anomaly(rows: list[dict], seed: int = 0, contamination: float = 0.05,
             contaminants += grp
             train_sessions.add(sid)
     anomalies = [r for r in anomalies if r["session_id"] not in train_sessions]
-    train_rows = train_normal + contaminants + list(extra_normal or [])
+    return {"train": train_normal + contaminants + list(extra_normal or []), "contaminants": contaminants,
+            "test": test_normal + hard_neg + anomalies}
+
+
+def train_anomaly(rows: list[dict], seed: int = 0, contamination: float = 0.05,
+                  extra_normal: list[dict] | None = None, train_anomaly_fraction: float = 0.03
+                  ) -> tuple[AnomalyModel, dict]:
+    """Train on mostly-normal rows, evaluate on a held-out split containing every anomaly type (see split_rows)."""
+    split = split_rows(rows, seed, train_anomaly_fraction, extra_normal)
+    train_rows, contaminants = split["train"], split["contaminants"]
+    weak = weak_features(to_matrix(train_rows))
     model = train_isolation_forest(train_rows, contamination=contamination, seed=seed,
                                    meta={"trained_on": "synthetic, mostly-normal behaviour", "n_train": len(train_rows),
+                                         "weak_features": weak,
                                          "n_unlabeled_contaminants": len(contaminants),
                                          "extra_confirmed_false_positives": len(extra_normal or []),
                                          "trained_at": time.time()})
-    test = test_normal + hard_neg + anomalies
+    test = split["test"]
     y_true = np.array([r["is_anomaly"] for r in test])
     scores = model.score(test)
     y_pred = np.array([int(s.flagged) for s in scores])
@@ -251,6 +260,11 @@ def train_anomaly(rows: list[dict], seed: int = 0, contamination: float = 0.05,
         "confusion_matrix": {"labels": ["normal", "anomaly"], "matrix": cm.tolist(),
                              "note": "rows = true, columns = predicted (flagged by Isolation Forest)"},
         "per_scenario": per_scenario, "features": FEATURES, "contamination": contamination,
+        "weak_features": weak,
+        "weak_features_note": ("These features almost never vary in the training data, so the forest is close to blind "
+                               "to them (it cannot isolate what it never saw differ). Detection of such patterns relies "
+                               "on the deterministic rules, not the forest. Measured on this synthetic data: token replay "
+                               "is caught by the forest in only some training splits, and always by the rules."),
         "data": "synthetic",
         "caveat": ("Anomalies are patterns defined by this project's simulator, so recall here shows the forest can "
                    "separate those patterns, not that it would catch real misconduct. 'false_positive' rows are "
