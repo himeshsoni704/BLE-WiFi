@@ -5,7 +5,8 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   // `npm run build` output is served by the backend under /ui/; the dev server runs at the root.
-  base: command === 'build' ? '/ui/' : '/',
+  // A static host that serves the app from its own root (Vercel) builds with VITE_BASE=/.
+  base: process.env.VITE_BASE ?? (command === 'build' ? '/ui/' : '/'),
   plugins: [react(), tailwindcss()],
   server: {
     host: true,

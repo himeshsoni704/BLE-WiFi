@@ -5,9 +5,39 @@ import type {
   VerifiedCaseEntry,
 } from "../types/api";
 
-// Dev: the Vite proxy maps /api to the backend. Built app: served by the backend itself, so same origin.
-// Set VITE_API_BASE to point a build at a backend on another origin.
-const BASE: string = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? "/api" : "");
+// Dev: the Vite proxy maps /api to the backend. Built app served by the backend itself: same origin.
+// Set VITE_API_BASE to point a build at a backend on another origin. A static host such as Vercel builds with
+// VITE_ALLOW_BACKEND_URL=1, which lets the sign-in page store the backend's address (for example an HTTPS tunnel to
+// a laptop) in this browser, so a changing tunnel address needs no rebuild.
+const BASE_KEY = "cp_api_base";
+const ENV_BASE: string = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? "/api" : "");
+export const BACKEND_URL_CONFIGURABLE: boolean = import.meta.env.VITE_ALLOW_BACKEND_URL === "1";
+
+function storedBase(): string {
+  if (!BACKEND_URL_CONFIGURABLE) return "";
+  try {
+    return localStorage.getItem(BASE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function getApiBase(): string {
+  return storedBase() || ENV_BASE;
+}
+
+/** Remember the backend address (only on builds that allow it). Normalises away a trailing slash. */
+export function setApiBase(url: string): void {
+  if (!BACKEND_URL_CONFIGURABLE) return;
+  const clean = url.trim().replace(/\/+$/, "");
+  try {
+    if (clean) localStorage.setItem(BASE_KEY, clean);
+    else localStorage.removeItem(BASE_KEY);
+  } catch {
+    /* storage unavailable: the address just will not be remembered */
+  }
+}
+
 const TOKEN_KEY = "cp_token";
 
 let token: string | null = localStorage.getItem(TOKEN_KEY);
@@ -32,7 +62,15 @@ export function onTokenChange(fn: (t: string | null) => void): () => void {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...headers, ...(init?.headers ?? {}) } });
+  const base = getApiBase();
+  // ngrok's free tier puts a warning page in front of API calls unless this header is present.
+  if (base.includes("ngrok")) headers["ngrok-skip-browser-warning"] = "1";
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, { ...init, headers: { ...headers, ...(init?.headers ?? {}) } });
+  } catch {
+    throw new Error(`Can't reach the backend${base ? ` at ${base}` : ""}. Is it running, and does CORS_ORIGINS allow this site?`);
+  }
   if (res.status === 401) {
     setToken(null);
     throw new Error("401 session expired, please log in again");
@@ -115,7 +153,12 @@ export const api = {
 };
 
 export function wsUrl(path: string): string {
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   const t = token ? `?token=${encodeURIComponent(token)}` : "";
+  const base = getApiBase();
+  if (/^https?:\/\//.test(base)) {
+    // backend on another origin: same host as the API, ws or wss to match
+    return `${base.replace(/^http/, "ws")}${path}${t}`;
+  }
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}${path}${t}`;
 }

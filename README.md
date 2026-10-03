@@ -283,6 +283,11 @@ export GEMINI_MODEL=<a model id your key can use>
 $env:LLM_PROVIDER = "gemini"; $env:GEMINI_API_KEY = "your_key_here"; $env:GEMINI_MODEL = "<a model id your key can use>"
 ```
 
+### Optional: public dashboard link (Vercel)
+
+The dashboard can be hosted on Vercel while the backend and all data stay on your laptop behind an HTTPS tunnel. Your local
+data is not moved or lost. Steps: [`campus-presence/docs/VERCEL.md`](campus-presence/docs/VERCEL.md).
+
 ### Run the tests
 
 ```bash
