@@ -23,7 +23,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      # The runner image already has the Android SDK ($ANDROID_HOME); just make sure licences are accepted.
+      - name: Accept Android SDK licences
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+        working-directory: .
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
