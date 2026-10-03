@@ -47,15 +47,19 @@ scans*. Scans are labelled with the room picked when you pressed Start, and the 
 scans for the first are waiting (upload or *Discard collected scans*). Walk to a second room and repeat, then
 *Retrain Wi-Fi model*. (Developer options, "Wi-Fi scan throttling" off, makes this much faster.)
 
-**2. Classroom node.** Role *Classroom node*, node key `node-204-demo`, *Start*. Put the phone where the board is.
+**2. Start a fresh session (just before the phones).** Dashboard, **Demo Control**, *Start a fresh live session*. A student only
+reaches `PRESENT` when their Bluetooth evidence covers a fair share of the time since the session began, so a session that
+has been open for half an hour caps out at `LIKELY_PRESENT`.
+
+**3. Classroom node.** Role *Classroom node*, node key `node-204-demo`, *Start*. Put the phone where the board is.
 Dashboard: Room 204's marker flips from SIMULATED to LIVE.
 
-**3. Student.** Second phone: role *Student*, `HIMESH` / `demo1234` (also `STU101`..`STU103`), *Start*.
+**4. Student.** Second phone: role *Student*, `HIMESH` / `demo1234` (also `STU101`..`STU103`), *Start*.
 Watch **Live Location** and **Attendance** on the dashboard (session `CS301`, Room 204). After about two minutes of
 sustained BLE plus a matching Wi-Fi room the student becomes `PRESENT`. BLE alone never gets there (`REVIEW_REQUIRED` or
 `LIKELY_PRESENT`) by design: `PRESENT` needs two independent signal families.
 
-The `CS301` live session lasts about 60 minutes from when the backend started; restart the backend for a fresh one.
+Sessions last 60 minutes. The built-in `CS301` starts when the backend does; use step 2 for a fresh one.
 The Student and Node roles run as foreground services (a notification is shown) and keep working with the screen off, but
 some phone makers kill them anyway: exempt the app from battery optimisation. The surveyor needs the screen on.
 

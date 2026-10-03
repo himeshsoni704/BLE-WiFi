@@ -118,5 +118,6 @@ Android app and retraining the live model (`POST /wifi/retrain`), not from these
 - **Phone readings rejected as `timestamp_out_of_window`**: the phone's clock is more than 2 minutes off. The app's *Check server* shows the offset.
 - **Wi-Fi rejected as `no_known_aps`**: nobody has surveyed the rooms yet, so the server knows none of the access points.
 - **A student never leaves `REVIEW_REQUIRED`**: BLE alone cannot reach `PRESENT`; the Wi-Fi model needs a survey of at least two rooms.
-- **`CS301` has no live session**: it lasts about 60 minutes from backend start; restart the backend or `POST /sessions`.
+- **Student stays `LIKELY_PRESENT` with real phones**: the session is too old. Press *Start a fresh live session* in Demo Control, then start the phones.
+- **No live session at all**: sessions last 60 minutes; press *Start a fresh live session* in Demo Control.
 - **Too many logins**: the login endpoint allows 10 attempts a minute per client.

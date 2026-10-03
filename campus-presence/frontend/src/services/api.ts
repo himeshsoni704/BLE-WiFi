@@ -100,6 +100,10 @@ export const api = {
 
   summary: (source: Source | "all" = "all") => request<SummaryResponse>(`/summary${qs({ source })}`),
 
+  createSession: (code: string, title: string, classroomId: string, minutes = 60) =>
+    request<{ id: number; code: string; room: string; start_ts: number; end_ts: number; enrolled_live_students: number }>(
+      "/sessions", { method: "POST", body: JSON.stringify({ code, title, classroom_id: classroomId, minutes }) }),
+
   simulationStart: (scenario: string, students = 300, seed = 1, wait = false) =>
     request<SimulationStartResponse>("/simulation/start", {
       method: "POST",
