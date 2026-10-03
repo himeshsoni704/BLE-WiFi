@@ -170,6 +170,15 @@ export function EvidenceExplorer() {
                   <span style={{ color: "var(--text-dim)" }}>Signal families</span>
                   <span style={{ color: "var(--text)" }}>{session.evidence.independent_signal_families?.count ?? 0}</span>
                 </div>
+                {(session.evidence.limiting_factors?.length ?? 0) > 0 && (
+                  <div className="mt-2 px-3 py-2.5 text-xs leading-relaxed"
+                       style={{ background: "var(--amber-soft)", color: "var(--amber)", borderRadius: "var(--radius-sm)" }}>
+                    <div className="mb-1 font-semibold">Why this is not Present</div>
+                    <ul className="list-disc pl-4">
+                      {session.evidence.limiting_factors?.map((f) => <li key={f}>{f}</li>)}
+                    </ul>
+                  </div>
+                )}
                 {session.evidence.isolation_forest?.evaluated && (
                   <div className="mt-1 flex items-center justify-between text-xs">
                     <span style={{ color: "var(--text-dim)" }}>Isolation Forest</span>

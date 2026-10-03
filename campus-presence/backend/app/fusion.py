@@ -77,6 +77,33 @@ def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, x))
 
 
+def _limiting_factors(w, t, valid_markers, other_rooms, sm_rssi, ble_pts, wifi_available, wifi_zone, match_fraction,
+                      wifi_pts, own_signal, n_consistent, peer_pts, coverage, capped, n_families) -> list[str]:
+    """Plain-language reasons the score is below PRESENT, from the same numbers the score used."""
+    out = []
+    if not valid_markers:
+        out.append("No classroom Bluetooth signal strong enough was heard in this room"
+                   + (f" (a marker from room {', '.join(other_rooms)} was heard instead)." if other_rooms else "."))
+    elif ble_pts < w.classroom_ble - 0.05:
+        out.append(f"Bluetooth signal is weak ({sm_rssi:.0f} dBm): {ble_pts:.0f}/{w.classroom_ble:.0f} points; "
+                   f"full credit needs {t.marker_rssi_good:.0f} dBm or stronger.")
+    if not wifi_available:
+        out.append("No usable Wi-Fi room estimate yet (no scan accepted, or its confidence was too low). "
+                   "Real rooms must be surveyed first.")
+    elif wifi_pts < w.wifi_match - 0.05:
+        out.append(f"Wi-Fi put the phone in this room for {match_fraction:.0%} of scans (mostly room {wifi_zone}): "
+                   f"{wifi_pts:.0f}/{w.wifi_match:.0f} points.")
+    if coverage < t.sustained_fraction:
+        out.append(f"Bluetooth has covered {coverage:.0%} of the time since the session began; "
+                   f"{t.sustained_fraction:.0%} earns the full sustained-presence points.")
+    if own_signal and n_consistent == 0 and peer_pts == 0:
+        out.append("No other student in this room was heard, so no peer points (normal in a two-phone demo).")
+    if capped or n_families < 2:
+        out.append("PRESENT needs two independent signal families (Bluetooth and Wi-Fi, or staff-supplied face/RFID); "
+                   f"only {n_families} confirmed.")
+    return out
+
+
 def build_evidence(inp: StudentInputs, w: FusionWeights, t: Thresholds) -> dict:
     prov_live = "simulated" if inp.is_simulated else "live"
     elapsed = max(1.0, min(inp.now, inp.end_ts) - inp.start_ts)
@@ -114,7 +141,8 @@ def build_evidence(inp: StudentInputs, w: FusionWeights, t: Thresholds) -> dict:
         wifi_conf = sum(zone_confs) / len(zone_confs)
     matching = [x.conf for x in usable_wifi if x.zone == inp.room]
     mean_match_conf = sum(matching) / len(matching) if matching else 0.0
-    wifi_pts = w.wifi_match * match_fraction * _clamp(mean_match_conf / 0.5)
+    # Single scans are noisy and most of their errors are the next room, so a clear majority earns full credit.
+    wifi_pts = w.wifi_match * _clamp(match_fraction / t.wifi_match_full) * _clamp(mean_match_conf / 0.5)
 
     # ---- sustained presence (BLE coverage of elapsed session time) --------------------
     coverage_fraction = _clamp(covered / elapsed)
@@ -154,6 +182,10 @@ def build_evidence(inp: StudentInputs, w: FusionWeights, t: Thresholds) -> dict:
     else:
         state = ABSENT
     capped = score >= t.present and n_families < 2
+
+    limiting = [] if state == PRESENT else _limiting_factors(
+        w, t, valid_markers, other_rooms, sm_rssi, ble_pts, wifi_available, wifi_pred_zone, match_fraction, wifi_pts,
+        own_signal, len(consistent), peer_pts, coverage_fraction, capped, n_families)
 
     has_evidence = bool(valid_markers or usable_wifi or peers_ok or face_ok or rfid_ok or other_rooms)
     return {
@@ -202,6 +234,7 @@ def build_evidence(inp: StudentInputs, w: FusionWeights, t: Thresholds) -> dict:
         "score_note": SCORE_DISCLAIMER,
         "state": state,
         "state_capped_for_single_family": capped,
+        "limiting_factors": limiting,
         "has_evidence": has_evidence,
         "elapsed_s": round(elapsed, 1),
         "session_length_s": round(session_len, 1),

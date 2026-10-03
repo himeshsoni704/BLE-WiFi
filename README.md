@@ -117,7 +117,9 @@ Components:
    model; faculty can survey real rooms with the app (`/wifi/survey`) and retrain a live model (`/wifi/retrain`).
 3. **Fusion.** Weighted points: classroom BLE 35, Wi-Fi 30, peers 20, sustained presence 10, face 5, RFID 5. `PRESENT` needs
    a score of at least 70 **and** at least two independent signal families; 50+ is `LIKELY_PRESENT`, 30+ `REVIEW_REQUIRED`.
-   Every component records its provenance. Weights and thresholds are in `campus-presence/backend/app/config.py` and can be
+   Bluetooth earns full points at -80 dBm or stronger (partial down to -85); Wi-Fi earns full points when 75% of scans agree
+   on the session room. Evidence for a state below `PRESENT` includes plain-language `limiting_factors`, shown in Evidence
+   Explorer ("Why this is not Present"). Every component records its provenance. Weights and thresholds are in `campus-presence/backend/app/config.py` and can be
    overridden (`FUSION_CONFIG`, `W_<NAME>`).
 4. **Detection.** Four deterministic rules (`token_reuse`, `impossible_movement` above 4 m/s, `ble_wifi_contradiction`,
    `rapid_session_switching`) plus an Isolation Forest over 12 behaviour features. The forest runs only when at least 3

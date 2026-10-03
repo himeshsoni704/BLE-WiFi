@@ -142,6 +142,8 @@ export interface EvidenceSnapshot {
   independent_signal_families: { count: number; ble: boolean; wifi: boolean; face: boolean; rfid: boolean };
   has_evidence: boolean;
   state_capped_for_single_family: boolean;
+  /** Plain-language reasons the score is below PRESENT; absent on evidence stored before this field existed. */
+  limiting_factors?: string[];
   isolation_forest?: { evaluated: boolean; reason?: string; raw_score?: number; flagged?: boolean; risk_demo_0_100?: number };
   rules?: { rule: string; severity: string; detail: string; data: Record<string, unknown> }[];
 }

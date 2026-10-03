@@ -126,3 +126,44 @@ def test_provenance_labels():
     sim = ev(markers=[marker()], wifis=wifi(), is_simulated=True)
     assert live["classroom_ble"]["provenance"] == "live" and live["wifi"]["provenance"] == "estimated"
     assert sim["classroom_ble"]["provenance"] == "simulated" and sim["wifi"]["provenance"] == "simulated"
+
+
+# ---- a phone that is in the room but not at its best must still be able to reach PRESENT --------------------------------
+
+def mixed_wifi(n_room, n_next, conf=0.8):
+    return [WifiObs(START + 100 + i * 100, "204" if i < n_room else "205", conf) for i in range(n_room + n_next)]
+
+
+def test_a_phone_across_the_room_with_a_good_wifi_match_is_present_without_peers():
+    """Two-phone demo: no peers. Weak-but-valid Bluetooth (-80 dBm) plus Wi-Fi that agrees must be enough."""
+    e = ev(markers=[marker(rssi=-80)], wifis=wifi())
+    assert e["classroom_ble"]["points"] == 35 and e["state"] == PRESENT and e["limiting_factors"] == []
+
+
+def test_a_few_next_room_wifi_scans_do_not_cost_the_whole_state():
+    """Single scans are noisy and most errors are the adjacent room. 4 of 5 scans agreeing is a clear majority."""
+    e = ev(markers=[marker(rssi=-65)], wifis=mixed_wifi(4, 1))
+    assert e["wifi"]["points"] == 30 and e["state"] == PRESENT
+    split = ev(markers=[marker(rssi=-65)], wifis=mixed_wifi(3, 2))              # 60%: partial credit, honest about it
+    assert 0 < split["wifi"]["points"] < 30
+    assert any("60%" in f for f in split["limiting_factors"])
+
+
+def test_the_adjacent_room_is_still_not_present():
+    """A phone next door hears the marker faintly and Wi-Fi says it is in the other room: never PRESENT."""
+    e = ev(markers=[marker(rssi=-83)], wifis=wifi(zone="205"))
+    assert e["state"] in (REVIEW_REQUIRED, LIKELY_PRESENT) and e["wifi"]["points"] == 0
+    assert e["independent_signal_families"]["wifi"] is False
+    # and a phone that only hears the neighbouring marker, with no room-204 signal at all, gets nothing for this session
+    away = ev(markers=[marker(rssi=-60, room="205")], wifis=wifi(zone="205"))
+    assert away["classroom_ble"]["points"] == 0 and away["state"] != PRESENT
+    assert any("205" in f for f in away["limiting_factors"])
+
+
+def test_limiting_factors_say_why_the_score_is_below_present():
+    e = ev(markers=[marker(rssi=-84)])
+    texts = " | ".join(e["limiting_factors"])
+    assert "weak" in texts and "No usable Wi-Fi" in texts and "two independent signal families" in texts
+    assert ev(markers=[marker()], wifis=wifi(), peers=peers(3), peers_in_room={"p0", "p1", "p2"})["limiting_factors"] == []
+    early = ev(markers=[marker(ts=START + 400, dur=300)], wifis=wifi())
+    assert any("sustained" in f for f in early["limiting_factors"])

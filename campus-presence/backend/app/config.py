@@ -36,8 +36,9 @@ class Thresholds:
     likely_present: float = 50
     review_required: float = 30        # below this -> ABSENT
     marker_rssi_min: float = -85       # smoothed marker RSSI must beat this to count
-    marker_rssi_good: float = -75      # full BLE credit at/above this
+    marker_rssi_good: float = -80      # full BLE credit at/above this (-75 left PRESENT unreachable for a phone across a room)
     wifi_conf_min: float = 0.25        # ignore Wi-Fi predictions below this confidence
+    wifi_match_full: float = 0.75      # full Wi-Fi credit when this share of scans (confidence-weighted) says the session room
     peer_rssi_min: float = -88
     remote_rssi_min: float = -80       # another room's phone must see the token at least this strongly
     peer_target: int = 3               # distinct consistent peers for full peer credit

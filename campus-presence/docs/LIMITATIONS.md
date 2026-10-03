@@ -69,7 +69,7 @@ attendance state or showing the system to people who will.
 ## Radio realities
 
 - BLE RSSI is noisy and depends on body, orientation, and phone model. It is used as a coarse proximity hint and never
-  converted into a distance. Thresholds (`marker_rssi_min -85`, `marker_rssi_good -75`) are untuned guesses.
+  converted into a distance. Thresholds (`marker_rssi_min -85`, `marker_rssi_good -80`) are untuned guesses.
 - Wi-Fi localisation needs rooms to be surveyed first (staff, via the Android surveyor or `POST /wifi/survey`), at least two
   rooms with 8+ scans each. A room nobody surveyed cannot be recognised. Access-point changes need a re-survey.
 - Android throttles Wi-Fi scans (about 4 per 2 minutes in the foreground, far fewer in the background), so uploads may be

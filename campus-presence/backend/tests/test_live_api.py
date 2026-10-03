@@ -410,3 +410,21 @@ def test_websocket_requires_a_staff_token_and_streams_events(app):
                 pass
         with c.websocket_connect(f"/ws?token={fac}") as ws:
             assert ws.receive_json()["type"] == "hello"
+
+
+def test_a_low_live_score_comes_with_the_reasons_and_a_surveyed_phone_across_the_room_is_present(w):
+    """Evidence endpoint explains a low score; the same phone at -80 dBm with a surveyed, agreeing Wi-Fi room is PRESENT."""
+    w.ble("HIMESH", w.marker_item("204", rssi=-80, dur=30))
+    w.clock.advance(30)
+    w.ble("HIMESH", w.marker_item("204", rssi=-80, dur=30))
+    ev = w.c.get("/evidence/HIMESH", headers=w.p["HIMESH"]["h"]).json()
+    live = next(s for s in ev["sessions"] if s["session"]["code"] == "CS301")["evidence"]
+    assert live["state"] != "PRESENT"
+    assert any("Wi-Fi" in f for f in live["limiting_factors"]), live["limiting_factors"]
+    w.survey()
+    for _ in range(6):
+        w.clock.advance(30)
+        w.ble("HIMESH", w.marker_item("204", rssi=-80, dur=30))
+        w.wifi("HIMESH", [-46, -73, -79])
+    a = w.attendance()
+    assert (a.get("final_state") or a.get("state")) == "PRESENT", a
